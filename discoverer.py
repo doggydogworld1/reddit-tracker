@@ -32,6 +32,14 @@ FALSE_POSITIVE_WORDS = {
     "cars", "automotive", "pets", "dogs", "cats", "funny", "memes",
     "politics", "news", "science", "space", "history", "art", "design",
     "fashion", "beauty", "makeup", "relationships", "dating", "parenting",
+    # General finance/personal-finance — NOT stock communities
+    "personal", "canada", "india", "australia", "asx", "mutual",
+    "monarch", "club", "fluent", "phinvest", "budget", "credit",
+    "debt", "savings", "retirement", "tax", "insurance", "bank",
+    "mortgage", "loan", "crypto", "bitcoin", "ethereum", "coin",
+    "forex", "currency", "real_estate", "realestate", "property",
+    "frugal", "poverty", "wealth", "salary", "career", "job",
+    "side", "hustle", "passive", "fire", "financialindependence",
 }
 
 FINANCE_KEYWORDS = {

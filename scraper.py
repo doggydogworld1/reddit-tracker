@@ -82,9 +82,14 @@ def scrape_all():
         except Exception as e:
             logger.error("Failed to scrape r/%s: %s", subreddit_name, e)
             fail_count += 1
+            # Back off on rate limit
+            if "429" in str(e):
+                backoff = 30
+                logger.warning("Rate limited — backing off %ds", backoff)
+                time.sleep(backoff)
 
-        # Sleep 2 seconds between requests to respect rate limits
-        time.sleep(2)
+        # Sleep between requests to respect rate limits
+        time.sleep(3)
 
     logger.info(
         "Scrape cycle complete: %d succeeded, %d failed", success_count, fail_count
