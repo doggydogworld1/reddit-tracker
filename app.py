@@ -70,9 +70,13 @@ def dashboard():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    """Return leaderboard data as JSON."""
+    """Return leaderboard data as JSON. ?sort=organic (default) or ?sort=velocity."""
     limit = request.args.get("limit", 50, type=int)
+    sort = request.args.get("sort", "organic")
     data = get_leaderboard(limit)
+    if sort == "velocity":
+        data = sorted(data, key=lambda r: r["velocity_pct"] or 0, reverse=True)
+    # organic sort is already default from get_leaderboard()
     return jsonify(data)
 
 

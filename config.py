@@ -64,5 +64,13 @@ DISCOVERY_SEEDS = [
 ADMIN_SEED_TOKEN = "changeme123"   # Change before deploying — protects /admin/seed endpoint
 SCRAPE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; stock-tracker/1.0; personal project)"}
 
+# Organic score: penalize velocity when stock already made a big price move
+ORGANIC_SCORE = {
+    "threshold_1d":  8.0,    # 1-day price move % where penalty = 0.5
+    "threshold_7d":  15.0,   # 7-day price move % where penalty = 0.5
+    "threshold_30d": 25.0,   # 30-day price move % where penalty = 0.5
+    "k": 2.0,                # steepness — higher = harsher penalty curve
+}
+
 FLASK_PORT = 5050
 FLASK_DEBUG = False

@@ -1,14 +1,120 @@
 """Velocity, acceleration, and alert computations using raw SQL via SQLAlchemy."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 
 from sqlalchemy import text
 
-from config import SURGE_MULTIPLIER
+from config import SURGE_MULTIPLIER, ORGANIC_SCORE as ORGANIC_CFG
 from database import Snapshot, Alert, Watchlist, get_session
 
 logger = logging.getLogger(__name__)
+
+# ── Price move cache ──────────────────────────────────────────────────────────
+_price_cache = {}  # key: "{ticker}_{days}d_{date}" → (pct_change, timestamp)
+
+
+def get_price_move(ticker, lookback_days=1):
+    """
+    Fetch the percentage price move for a ticker over the last N days.
+    Uses yfinance with a per-day cache to avoid redundant API calls.
+    Returns None on failure (gracefully skippable).
+    """
+    if not ticker:
+        return None
+
+    today = date.today().isoformat()
+    cache_key = f"{ticker}_{lookback_days}d_{today}"
+
+    if cache_key in _price_cache:
+        cached_val, cached_ts = _price_cache[cache_key]
+        return cached_val
+
+    try:
+        import yfinance as yf
+
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=f"{lookback_days + 1}d")
+
+        if hist is None or len(hist) < 2:
+            return None
+
+        old_close = hist["Close"].iloc[0]
+        new_close = hist["Close"].iloc[-1]
+
+        if old_close <= 0:
+            return None
+
+        pct_change = round((new_close - old_close) / old_close * 100, 2)
+        _price_cache[cache_key] = (pct_change, datetime.now(timezone.utc).timestamp())
+        return pct_change
+
+    except Exception as e:
+        logger.debug("yfinance failed for %s (%dd): %s", ticker, lookback_days, e)
+        return None
+
+
+def price_penalty(price_move_pct, threshold, k):
+    """
+    Smooth decay function.
+    Returns 1.0 when price_move_pct = 0 (no penalty).
+    Returns 0.5 when price_move_pct = threshold (half penalty).
+    Approaches 0 at very large moves but never reaches it.
+    """
+    return 1.0 / (1.0 + k * abs(price_move_pct) / threshold)
+
+
+def compute_organic_score(velocity_pct, ticker):
+    """
+    Given a velocity and optional ticker, returns a dict with:
+      organic_score  — the number to sort by (velocity × combined penalty)
+      price_penalty  — float 0.0–1.0 (1.0 = no penalty applied)
+      price_move_1d  — float % or None
+      price_move_7d  — float % or None
+      price_move_30d — float % or None
+
+    Subreddits with no ticker always get penalty=1.0 (never penalized).
+    Returns velocity_pct unchanged if velocity_pct is None.
+    """
+    if velocity_pct is None:
+        return {
+            "organic_score": None,
+            "price_penalty": None,
+            "price_move_1d": None,
+            "price_move_7d": None,
+            "price_move_30d": None,
+        }
+
+    if not ticker:
+        return {
+            "organic_score": round(velocity_pct, 4),
+            "price_penalty": 1.0,
+            "price_move_1d": None,
+            "price_move_7d": None,
+            "price_move_30d": None,
+        }
+
+    p1 = get_price_move(ticker, lookback_days=1)
+    p7 = get_price_move(ticker, lookback_days=7)
+    p30 = get_price_move(ticker, lookback_days=30)
+
+    penalties = []
+    if p1 is not None:
+        penalties.append(price_penalty(p1, ORGANIC_CFG["threshold_1d"], ORGANIC_CFG["k"]))
+    if p7 is not None:
+        penalties.append(price_penalty(p7, ORGANIC_CFG["threshold_7d"], ORGANIC_CFG["k"]))
+    if p30 is not None:
+        penalties.append(price_penalty(p30, ORGANIC_CFG["threshold_30d"], ORGANIC_CFG["k"]))
+
+    combined = min(penalties) if penalties else 1.0
+
+    return {
+        "organic_score": round(velocity_pct * combined, 4),
+        "price_penalty": round(combined, 4),
+        "price_move_1d": p1,
+        "price_move_7d": p7,
+        "price_move_30d": p30,
+    }
 
 
 def get_velocity(subreddit, hours=24):
@@ -178,19 +284,26 @@ def get_leaderboard(limit=20):
         velocity = get_velocity(subreddit_name, hours=24)
         acceleration = get_acceleration(subreddit_name)
 
-        results.append(
-            {
-                "subreddit": subreddit_name,
-                "ticker": entry.ticker,
-                "members": members,
-                "velocity_pct": velocity,
-                "acceleration": acceleration,
-                "members_7d_ago": members_7d_ago,
-            }
-        )
+        row = {
+            "subreddit": subreddit_name,
+            "ticker": entry.ticker,
+            "members": members,
+            "velocity_pct": velocity,
+            "acceleration": acceleration,
+            "members_7d_ago": members_7d_ago,
+        }
 
-    # Sort by velocity_pct descending; None values go to the end
-    results.sort(key=lambda x: x["velocity_pct"] if x["velocity_pct"] is not None else float("-inf"), reverse=True)
+        # Compute organic score and merge into row
+        organic = compute_organic_score(velocity, entry.ticker)
+        row.update(organic)
+
+        # Remove legacy key if present
+        row.pop("price_driven", None)
+
+        results.append(row)
+
+    # Sort by organic_score descending; None values go to the end
+    results.sort(key=lambda x: x["organic_score"] if x["organic_score"] is not None else float("-inf"), reverse=True)
 
     return results[:limit]
 

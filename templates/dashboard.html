@@ -93,6 +93,14 @@
 
         /* No data */
         .no-data { color: #484f58; font-style: italic; }
+
+        /* Sort buttons */
+        .sort-btn { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 6px 16px; color: #8b949e; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        .sort-btn:hover { background: #30363d; color: #f0f6fc; }
+        .sort-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+        /* Price move sub-line under ticker */
+        .price-move-sub { font-size: 11px; display: block; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -121,7 +129,13 @@
         <!-- Leaderboard tab -->
         <div class="tab-panel active" id="tab-leaderboard">
         <div class="leaderboard-section">
-            <div class="section-title">Leaderboard — Fastest Growing Communities</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                <div class="section-title" style="margin-bottom:0">Leaderboard — Fastest Growing Communities</div>
+                <div style="display:flex;gap:8px;">
+                    <button id="btn-organic" onclick="setSort('organic')" class="sort-btn active">Organic score</button>
+                    <button id="btn-velocity" onclick="setSort('velocity')" class="sort-btn">Raw velocity</button>
+                </div>
+            </div>
             <table id="leaderboard-table">
                 <thead>
                     <tr>
@@ -129,14 +143,16 @@
                         <th>Subreddit</th>
                         <th>Ticker</th>
                         <th>Members</th>
+                        <th>Organic Score</th>
                         <th>24h Growth %</th>
                         <th>Acceleration</th>
+                        <th title="How much of the velocity score is retained after adjusting for recent price movement. 100% = stock was quiet. Lower = stock already moved.">Price Penalty</th>
                         <th>7-Day Trend</th>
                         <th>Price</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard-body">
-                    <tr><td colspan="8" class="loading">Loading leaderboard...</td></tr>
+                    <tr><td colspan="10" class="loading">Loading leaderboard...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -200,6 +216,15 @@
         let sparklineCharts = {};
         let detailChart = null;
         let expandedRow = null;
+        let currentSort = 'organic';
+
+        // ── Sort toggle ───────────────────────────────────────────────────────
+        function setSort(mode) {
+            currentSort = mode;
+            document.getElementById('btn-organic').classList.toggle('active', mode === 'organic');
+            document.getElementById('btn-velocity').classList.toggle('active', mode === 'velocity');
+            fetchLeaderboard();
+        }
 
         // ── Format helpers ─────────────────────────────────────────────────────
         function fmtPct(val) {
@@ -207,6 +232,27 @@
             const sign = val >= 0 ? '+' : '';
             const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
             return `<span class="${cls}">${sign}${val.toFixed(2)}%</span>`;
+        }
+
+        function fmtPenalty(val) {
+            if (val === null || val === undefined) return '<span class="no-data">—</span>';
+            const pct = Math.round(val * 100);
+            let cls = 'neutral';
+            if (val >= 0.80) cls = 'positive';
+            else if (val >= 0.50) cls = 'negative';  // amber — use a custom style
+            else cls = 'negative';
+            // Use amber for 0.50-0.79 range
+            if (val >= 0.50 && val < 0.80) {
+                return `<span style="color:#d29922;font-weight:500;">${pct}%</span>`;
+            }
+            return `<span class="${cls}" style="font-weight:500;">${pct}%</span>`;
+        }
+
+        function fmtPriceMove(val, label) {
+            if (val === null || val === undefined) return '';
+            const sign = val >= 0 ? '+' : '';
+            const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
+            return `<span class="price-move-sub ${cls}">${sign}${val.toFixed(1)}% ${label}</span>`;
         }
 
         function fmtNum(val) {
@@ -231,13 +277,13 @@
         // ── Leaderboard ────────────────────────────────────────────────────────
         async function fetchLeaderboard() {
             try {
-                const resp = await fetch('/api/leaderboard?limit=20');
+                const resp = await fetch(`/api/leaderboard?limit=20&sort=${currentSort}`);
                 leaderboardData = await resp.json();
                 renderLeaderboard(leaderboardData);
             } catch (e) {
                 console.error('Failed to fetch leaderboard:', e);
                 document.getElementById('leaderboard-body').innerHTML =
-                    '<tr><td colspan="8" class="loading">Failed to load data. Will retry...</td></tr>';
+                    '<tr><td colspan="10" class="loading">Failed to load data. Will retry...</td></tr>';
             }
         }
 
@@ -246,7 +292,7 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="loading">No data yet. Wait for at least 2 scrape cycles.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="loading">No data yet. Wait for at least 2 scrape cycles.</td></tr>';
                 return;
             }
 
@@ -257,13 +303,26 @@
                 tr.dataset.subreddit = item.subreddit;
                 tr.onclick = () => toggleDetail(item.subreddit, tr);
 
+                // Ticker cell with 7d price move sub-line
+                let tickerHtml = '<span class="no-data">—</span>';
+                if (item.ticker) {
+                    tickerHtml = `<span class="ticker-badge">${item.ticker}</span>`;
+                    if (item.price_move_7d !== null && item.price_move_7d !== undefined) {
+                        const sign = item.price_move_7d >= 0 ? '+' : '';
+                        const cls = item.price_move_7d > 0 ? 'positive' : item.price_move_7d < 0 ? 'negative' : 'neutral';
+                        tickerHtml += `<span class="price-move-sub ${cls}">${sign}${item.price_move_7d.toFixed(1)}% 7d</span>`;
+                    }
+                }
+
                 tr.innerHTML = `
                     <td class="rank">${idx + 1}</td>
                     <td><span class="subreddit-name">r/${item.subreddit}</span></td>
-                    <td>${item.ticker ? `<span class="ticker-badge">${item.ticker}</span>` : '<span class="no-data">—</span>'}</td>
+                    <td>${tickerHtml}</td>
                     <td class="members">${fmtNum(item.members)}</td>
+                    <td>${item.organic_score !== null && item.organic_score !== undefined ? fmtPct(item.organic_score) : '<span class="no-data">—</span>'}</td>
                     <td>${fmtPct(item.velocity_pct)}</td>
                     <td>${fmtAccel(item.acceleration)}</td>
+                    <td>${fmtPenalty(item.price_penalty)}</td>
                     <td class="sparkline-cell"><canvas id="spark-${item.subreddit}" width="120" height="40"></canvas></td>
                     <td class="price-cell" id="price-${item.subreddit}"><span class="no-data">—</span></td>
                 `;
@@ -273,7 +332,7 @@
                 const detailTr = document.createElement('tr');
                 detailTr.id = `detail-row-${item.subreddit}`;
                 detailTr.style.display = 'none';
-                detailTr.innerHTML = `<td colspan="8"><div class="detail-panel" id="detail-panel-${item.subreddit}">
+                detailTr.innerHTML = `<td colspan="10"><div class="detail-panel" id="detail-panel-${item.subreddit}">
                     <h3>r/${item.subreddit} — 30-Day Membership History</h3>
                     <div class="detail-chart-container"><canvas id="detail-chart-${item.subreddit}"></canvas></div>
                 </div></td>`;
