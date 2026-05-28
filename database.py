@@ -1,6 +1,7 @@
 """SQLAlchemy models and database initialization."""
 
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -72,6 +73,7 @@ class Alert(Base):
         )
 
 
+@contextmanager
 def get_session():
     """Return a context-manager session for database operations."""
     session = Session()
