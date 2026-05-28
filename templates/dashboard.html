@@ -321,7 +321,7 @@
 
                 tr.innerHTML = `
                     <td class="rank">${idx + 1}</td>
-                    <td><span class="subreddit-name">r/${item.subreddit}</span></td>
+                    <td><a class="subreddit-name" href="https://www.reddit.com/r/${item.subreddit}" target="_blank" rel="noopener" onclick="event.stopPropagation()">r/${item.subreddit}</a></td>
                     <td>${tickerHtml}</td>
                     <td class="members">${fmtNum(item.members)}</td>
                     <td>${item.organic_score !== null && item.organic_score !== undefined ? fmtPct(item.organic_score) : '<span class="no-data">—</span>'}</td>
@@ -546,7 +546,7 @@
                 const time = a.triggered_at ? new Date(a.triggered_at).toLocaleString() : '—';
                 return `<div class="alert-item">
                     <div class="alert-header">
-                        <span class="alert-subreddit">r/${a.subreddit}${a.ticker ? ` (${a.ticker})` : ''}</span>
+                        <a class="alert-subreddit" href="https://www.reddit.com/r/${a.subreddit}" target="_blank" rel="noopener" style="color:#f0f6fc;">r/${a.subreddit}${a.ticker ? ` (${a.ticker})` : ''}</a>
                         <span class="alert-time">${time}</span>
                     </div>
                     <div class="alert-detail">
@@ -590,7 +590,7 @@
 
             tbody.innerHTML = data.map(d => `
                 <tr id="disc-row-${d.subreddit}">
-                    <td><span class="subreddit-name">r/${d.subreddit}</span></td>
+                    <td><a class="subreddit-name" href="https://www.reddit.com/r/${d.subreddit}" target="_blank" rel="noopener">r/${d.subreddit}</a></td>
                     <td class="members">${d.members ? d.members.toLocaleString() : '<span class="no-data">—</span>'}</td>
                     <td>${d.discovered_via || '<span class="no-data">—</span>'}</td>
                     <td>${d.ticker_guess ? `<span class="ticker-badge">${d.ticker_guess}</span>` : '<span class="no-data">—</span>'}</td>
@@ -649,7 +649,7 @@
 
             tbody.innerHTML = data.map(d => `
                 <tr id="wl-row-${d.subreddit}">
-                    <td><span class="subreddit-name">r/${d.subreddit}</span></td>
+                    <td><a class="subreddit-name" href="https://www.reddit.com/r/${d.subreddit}" target="_blank" rel="noopener">r/${d.subreddit}</a></td>
                     <td>${d.ticker ? `<span class="ticker-badge">${d.ticker}</span>` : '<span class="no-data">—</span>'}</td>
                     <td>${d.auto_discovered ? '🔍 Auto' : '📌 Manual'}</td>
                     <td>${d.active ? '<span class="positive">Active</span>' : '<span class="negative">Inactive</span>'}</td>
