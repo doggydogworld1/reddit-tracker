@@ -40,6 +40,12 @@ FALSE_POSITIVE_WORDS = {
     "forex", "currency", "real_estate", "realestate", "property",
     "frugal", "poverty", "wealth", "salary", "career", "job",
     "side", "hustle", "passive", "fire", "financialindependence",
+    # Games / trading-card / non-stock communities
+    "monopoly", "pokemon", "yokai", "nft", "mars",
+    # Non-US markets not useful for US retail investor thesis
+    "nepal", "kenya", "ukpenny",
+    # Low-quality / spam patterns
+    "bogle", "portfolios",
 }
 
 FINANCE_KEYWORDS = {
