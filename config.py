@@ -1,3 +1,9 @@
+import os
+
+REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID", "REPLACE_ME")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "REPLACE_ME")
+REDDIT_USER_AGENT    = "reddit_tracker/1.0 by YourUsername"
+
 DATABASE_URL = "sqlite:///data/reddit_tracker.db"
 
 SCRAPE_INTERVAL_HOURS = 4   # how often to collect snapshots
@@ -10,8 +16,8 @@ WATCHLIST = {
     "options":          None,
     "SecurityAnalysis": None,
     "tsla":             "TSLA",
-    "nvidiainvestors":  "NVDA",
-    "applestock":       "AAPL",
+    "Nvidia":           "NVDA",       # replaced nvidiainvestors (private)
+    "AAPL":             "AAPL",       # replaced applestock (404)
     "AMD_Stock":        "AMD",
     "AMZN":             "AMZN",
     "microsoft":        "MSFT",
@@ -19,10 +25,44 @@ WATCHLIST = {
     "Superstonk":       "GME",
     "Palantir":         "PLTR",
     "sofistock":        "SOFI",
+    # Additional stock subreddits
+    "SPACs":            None,
+    "pennystocks":      None,
+    "StockMarket":      None,
+    "Daytrading":       None,
+    "dividends":        None,
+    "ValueInvesting":   None,
+    "algotrading":      None,
+    "RobinHood":        None,
+    "weedstocks":       None,
+    "MVIS":             "MVIS",
+    "SPY":              "SPY",
+    "BBBY":             None,
+    "MetaTrader":       "META",
+    "teslainvestorsclub": "TSLA",
 }
 
 # Alert threshold: flag any subreddit whose 24h velocity is N× its 30-day average
 SURGE_MULTIPLIER = 3.0
+
+# Auto-discovery settings
+DISCOVERY_ENABLED = True
+DISCOVERY_INTERVAL_HOURS = 24  # how often to search for new subreddits
+DISCOVERY_MAX_PER_RUN = 20      # max new subreddits to discover per cycle
+DISCOVERY_MIN_SUBSCRIBERS = 500  # ignore tiny subreddits
+
+# Seed subreddits to crawl for related communities
+DISCOVERY_SEEDS = [
+    "wallstreetbets",
+    "investing",
+    "stocks",
+    "options",
+    "pennystocks",
+    "StockMarket",
+]
+
+ADMIN_SEED_TOKEN = "changeme123"   # Change before deploying — protects /admin/seed endpoint
+SCRAPE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; stock-tracker/1.0; personal project)"}
 
 FLASK_PORT = 5050
 FLASK_DEBUG = False

@@ -9,8 +9,10 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
+    Boolean,
     DateTime,
     Index,
+    text,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
@@ -73,6 +75,48 @@ class Alert(Base):
         )
 
 
+class DiscoveredSubreddit(Base):
+    """Tracks subreddits found via auto-discovery that aren't in the static watchlist."""
+
+    __tablename__ = "discovered_subreddits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subreddit = Column(String, nullable=False, unique=True, index=True)
+    ticker = Column(String, nullable=True)
+    members = Column(Integer, nullable=True)
+    source = Column(String, nullable=True)  # which seed found it (backward compat)
+    discovered_via = Column(String, nullable=True)  # ticker_probe, search, related, sidebar
+    ticker_guess = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending, promoted, rejected
+    discovered_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    approved = Column(Integer, default=0)  # 1 = promoted, 0 = pending (backward compat)
+
+    def __repr__(self):
+        return (
+            f"<DiscoveredSubreddit(subreddit={self.subreddit!r}, "
+            f"members={self.members}, status={self.status})>"
+        )
+
+
+class Watchlist(Base):
+    """Active watchlist stored in DB — replaces hardcoded config.WATCHLIST dict."""
+
+    __tablename__ = "watchlist"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subreddit = Column(String, unique=True, nullable=False, index=True)
+    ticker = Column(String, nullable=True)
+    auto_discovered = Column(Boolean, default=False)
+    active = Column(Boolean, default=True)
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<Watchlist(subreddit={self.subreddit!r}, ticker={self.ticker}, active={self.active})>"
+
+
 @contextmanager
 def get_session():
     """Return a context-manager session for database operations."""
@@ -87,7 +131,40 @@ def get_session():
         session.close()
 
 
+def seed_watchlist_from_config():
+    """One-time migration: if Watchlist table is empty, populate from config.WATCHLIST dict."""
+    from config import WATCHLIST
+    with get_session() as session:
+        if session.query(Watchlist).count() == 0:
+            for subreddit, ticker in WATCHLIST.items():
+                session.add(Watchlist(subreddit=subreddit, ticker=ticker, auto_discovered=False, active=True))
+            logger.info("Seeded watchlist with %d entries from config", len(WATCHLIST))
+
+
+def migrate_discovered_subreddits():
+    """Add new columns to discovered_subreddits if they don't exist yet (SQLite compat)."""
+    with engine.connect() as conn:
+        existing = [row[1] for row in conn.execute(text("PRAGMA table_info(discovered_subreddits)")).fetchall()]
+        if "status" not in existing:
+            conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN status TEXT DEFAULT 'pending'"))
+        if "discovered_via" not in existing:
+            conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN discovered_via TEXT"))
+        if "ticker_guess" not in existing:
+            conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN ticker_guess TEXT"))
+        if "description" not in existing:
+            conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN description TEXT"))
+        conn.commit()
+    # Backfill: set status based on existing 'approved' column
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE discovered_subreddits SET status='promoted' WHERE approved=1 AND status IS NULL"))
+        conn.execute(text("UPDATE discovered_subreddits SET status='pending' WHERE approved=0 AND status IS NULL"))
+        conn.commit()
+    logger.info("Discovered subreddits migration complete")
+
+
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, then run migrations and seed."""
     Base.metadata.create_all(engine)
+    migrate_discovered_subreddits()
+    seed_watchlist_from_config()
     logger.info("Database initialized (tables created if missing)")

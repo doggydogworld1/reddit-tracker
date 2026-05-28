@@ -71,6 +71,26 @@
         /* Loading */
         .loading { text-align: center; padding: 40px; color: #8b949e; }
 
+        /* Tabs */
+        .tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #30363d; }
+        .tab-btn { background: none; border: none; color: #8b949e; font-size: 15px; font-weight: 600; padding: 10px 24px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+        .tab-btn:hover { color: #f0f6fc; }
+        .tab-btn.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* Action buttons */
+        .btn-approve { background: #238636; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: 600; margin-right: 6px; }
+        .btn-approve:hover { background: #2ea043; }
+        .btn-reject { background: #da3633; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .btn-reject:hover { background: #f85149; }
+        .btn-deactivate { background: #484f58; color: #c9d1d9; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 11px; }
+        .btn-deactivate:hover { background: #6e7681; }
+
+        /* Discovery queue header */
+        .discovery-header { font-size: 14px; color: #8b949e; margin-bottom: 12px; }
+        .discovery-header strong { color: #f0f6fc; }
+
         /* No data */
         .no-data { color: #484f58; font-style: italic; }
     </style>
@@ -91,7 +111,15 @@
     <!-- Main content -->
     <div class="main">
 
-        <!-- Leaderboard -->
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('leaderboard')">📈 Leaderboard</button>
+            <button class="tab-btn" onclick="switchTab('discovery')">🔍 Discovery Queue</button>
+            <button class="tab-btn" onclick="switchTab('watchlist-tab')">📋 Watchlist</button>
+        </div>
+
+        <!-- Leaderboard tab -->
+        <div class="tab-panel active" id="tab-leaderboard">
         <div class="leaderboard-section">
             <div class="section-title">Leaderboard — Fastest Growing Communities</div>
             <table id="leaderboard-table">
@@ -122,6 +150,46 @@
             <div class="alerts-list" id="alerts-list">
                 <div class="loading">Loading alerts...</div>
             </div>
+        </div>
+        </div><!-- end tab-leaderboard -->
+
+        <!-- Discovery Queue tab -->
+        <div class="tab-panel" id="tab-discovery">
+            <div class="discovery-header"><strong id="discovery-count">0</strong> subreddits pending review</div>
+            <table id="discovery-table">
+                <thead>
+                    <tr>
+                        <th>Subreddit</th>
+                        <th>Members</th>
+                        <th>Found via</th>
+                        <th>Ticker guess</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="discovery-body">
+                    <tr><td colspan="5" class="loading">Loading discoveries...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Watchlist tab -->
+        <div class="tab-panel" id="tab-watchlist-tab">
+            <div class="discovery-header"><strong id="watchlist-count">0</strong> subreddits in watchlist</div>
+            <table id="watchlist-table">
+                <thead>
+                    <tr>
+                        <th>Subreddit</th>
+                        <th>Ticker</th>
+                        <th>Source</th>
+                        <th>Active</th>
+                        <th>Added</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="watchlist-body">
+                    <tr><td colspan="6" class="loading">Loading watchlist...</td></tr>
+                </tbody>
+            </table>
         </div>
 
     </div>
@@ -424,6 +492,116 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        // ── Tab switching ──────────────────────────────────────────────────────
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.target.classList.add('active');
+            if (tabId === 'discovery') fetchDiscoveries();
+            if (tabId === 'watchlist-tab') fetchWatchlistTab();
+        }
+
+        // ── Discovery Queue ────────────────────────────────────────────────────
+        async function fetchDiscoveries() {
+            try {
+                const resp = await fetch('/api/discoveries');
+                const data = await resp.json();
+                renderDiscoveries(data);
+            } catch (e) {
+                console.error('Failed to fetch discoveries:', e);
+            }
+        }
+
+        function renderDiscoveries(data) {
+            const tbody = document.getElementById('discovery-body');
+            document.getElementById('discovery-count').textContent = data.length;
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="loading">No pending discoveries. Run discovery or wait for the next cycle.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(d => `
+                <tr id="disc-row-${d.subreddit}">
+                    <td><span class="subreddit-name">r/${d.subreddit}</span></td>
+                    <td class="members">${d.members ? d.members.toLocaleString() : '<span class="no-data">—</span>'}</td>
+                    <td>${d.discovered_via || '<span class="no-data">—</span>'}</td>
+                    <td>${d.ticker_guess ? `<span class="ticker-badge">${d.ticker_guess}</span>` : '<span class="no-data">—</span>'}</td>
+                    <td>
+                        <button class="btn-approve" onclick="approveDiscovery('${d.subreddit}')">✓ Approve</button>
+                        <button class="btn-reject" onclick="rejectDiscovery('${d.subreddit}')">✗ Reject</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function approveDiscovery(subreddit) {
+            try {
+                await fetch(`/api/discoveries/${subreddit}/approve`, { method: 'POST' });
+                const row = document.getElementById(`disc-row-${subreddit}`);
+                if (row) row.remove();
+                const countEl = document.getElementById('discovery-count');
+                countEl.textContent = parseInt(countEl.textContent) - 1;
+            } catch (e) {
+                console.error('Approve failed:', e);
+            }
+        }
+
+        async function rejectDiscovery(subreddit) {
+            try {
+                await fetch(`/api/discoveries/${subreddit}/reject`, { method: 'POST' });
+                const row = document.getElementById(`disc-row-${subreddit}`);
+                if (row) row.remove();
+                const countEl = document.getElementById('discovery-count');
+                countEl.textContent = parseInt(countEl.textContent) - 1;
+            } catch (e) {
+                console.error('Reject failed:', e);
+            }
+        }
+
+        // ── Watchlist Tab ──────────────────────────────────────────────────────
+        async function fetchWatchlistTab() {
+            try {
+                const resp = await fetch('/api/watchlist');
+                const data = await resp.json();
+                renderWatchlistTab(data);
+            } catch (e) {
+                console.error('Failed to fetch watchlist:', e);
+            }
+        }
+
+        function renderWatchlistTab(data) {
+            const tbody = document.getElementById('watchlist-body');
+            const activeCount = data.filter(d => d.active).length;
+            document.getElementById('watchlist-count').textContent = activeCount;
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="loading">No watchlist entries.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(d => `
+                <tr id="wl-row-${d.subreddit}">
+                    <td><span class="subreddit-name">r/${d.subreddit}</span></td>
+                    <td>${d.ticker ? `<span class="ticker-badge">${d.ticker}</span>` : '<span class="no-data">—</span>'}</td>
+                    <td>${d.auto_discovered ? '🔍 Auto' : '📌 Manual'}</td>
+                    <td>${d.active ? '<span class="positive">Active</span>' : '<span class="negative">Inactive</span>'}</td>
+                    <td>${d.added_at && d.added_at !== 'None' ? new Date(d.added_at).toLocaleDateString() : '—'}</td>
+                    <td>${d.active ? `<button class="btn-deactivate" onclick="deactivateSub('${d.subreddit}')">Deactivate</button>` : ''}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function deactivateSub(subreddit) {
+            try {
+                await fetch(`/api/watchlist/${subreddit}/deactivate`, { method: 'POST' });
+                fetchWatchlistTab();
+            } catch (e) {
+                console.error('Deactivate failed:', e);
+            }
         }
 
         // ── Init ───────────────────────────────────────────────────────────────

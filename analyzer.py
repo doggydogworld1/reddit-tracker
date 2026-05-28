@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
-from config import WATCHLIST, SURGE_MULTIPLIER
-from database import Snapshot, Alert, get_session
+from config import SURGE_MULTIPLIER
+from database import Snapshot, Alert, Watchlist, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,12 @@ def get_leaderboard(limit=20):
 
     results = []
 
-    for subreddit_name, ticker in WATCHLIST.items():
+    with get_session() as session:
+        active_entries = session.query(Watchlist).filter_by(active=True).all()
+
+    for entry in active_entries:
+        subreddit_name = entry.subreddit
+        ticker = entry.ticker
         with get_session() as session:
             # Count snapshots
             count_row = session.execute(
@@ -172,7 +177,7 @@ def get_leaderboard(limit=20):
         results.append(
             {
                 "subreddit": subreddit_name,
-                "ticker": ticker,
+                "ticker": entry.ticker,
                 "members": members,
                 "velocity_pct": velocity,
                 "acceleration": acceleration,
@@ -221,7 +226,12 @@ def check_and_record_alerts():
     cutoff_30d = now - timedelta(days=30)
     new_alerts = []
 
-    for subreddit_name, ticker in WATCHLIST.items():
+    with get_session() as session:
+        active_entries = session.query(Watchlist).filter_by(active=True).all()
+
+    for entry in active_entries:
+        subreddit_name = entry.subreddit
+        ticker = entry.ticker
         velocity_24h = get_velocity(subreddit_name, hours=24)
 
         if velocity_24h is None:

@@ -11,7 +11,7 @@ COPY --chown=appuser:appuser requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=appuser:appuser config.py database.py scraper.py analyzer.py scheduler.py app.py ./
+COPY --chown=appuser:appuser config.py database.py scraper.py analyzer.py scheduler.py app.py discoverer.py ./
 COPY --chown=appuser:appuser templates/ ./templates/
 
 RUN mkdir -p /app/data && chown -R appuser:appuser /app

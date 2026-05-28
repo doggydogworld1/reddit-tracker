@@ -6,10 +6,13 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, jsonify, request
 from sqlalchemy import text as sa_text
 
-from config import FLASK_PORT, FLASK_DEBUG, WATCHLIST
+import threading
+
+from config import FLASK_PORT, FLASK_DEBUG, WATCHLIST, ADMIN_SEED_TOKEN
 from database import init_db, Snapshot, Alert, get_session
 from scraper import scrape_all
 from analyzer import get_leaderboard, get_history, check_and_record_alerts
+from discoverer import discover_from_tickers, stop_seed_job, promote_approved_discoveries, run_discovery_cycle
 from scheduler import create_scheduler
 
 logging.basicConfig(
@@ -109,6 +112,107 @@ def api_alerts():
     return jsonify(alerts)
 
 
+@app.route("/api/discoveries")
+def api_discoveries():
+    """Pending discovered subreddits for review."""
+    with get_session() as session:
+        rows = session.execute(sa_text(
+            "SELECT subreddit, ticker_guess, members, discovered_via, discovered_at, status "
+            "FROM discovered_subreddits "
+            "WHERE status = 'pending' "
+            "ORDER BY members DESC LIMIT 200"
+        )).fetchall()
+    return jsonify([{
+        "subreddit": r[0], "ticker_guess": r[1], "members": r[2],
+        "discovered_via": r[3], "discovered_at": str(r[4]), "status": r[5]
+    } for r in rows])
+
+
+@app.route("/api/discoveries/<subreddit>/approve", methods=["POST"])
+def approve_discovery(subreddit):
+    """Approve a pending discovery and add it to the watchlist."""
+    with get_session() as session:
+        session.execute(sa_text(
+            "UPDATE discovered_subreddits SET status='promoted', approved=1 WHERE subreddit=:sub"
+        ), {"sub": subreddit})
+        existing = session.execute(sa_text(
+            "SELECT id FROM watchlist WHERE subreddit=:sub"
+        ), {"sub": subreddit}).fetchone()
+        if not existing:
+            session.execute(sa_text(
+                "INSERT INTO watchlist (subreddit, ticker, auto_discovered, active) "
+                "VALUES (:sub, NULL, 1, 1)"
+            ), {"sub": subreddit})
+    return jsonify({"status": "approved", "subreddit": subreddit})
+
+
+@app.route("/api/discoveries/<subreddit>/reject", methods=["POST"])
+def reject_discovery(subreddit):
+    """Reject a pending discovery."""
+    with get_session() as session:
+        session.execute(sa_text(
+            "UPDATE discovered_subreddits SET status='rejected' WHERE subreddit=:sub"
+        ), {"sub": subreddit})
+    return jsonify({"status": "rejected", "subreddit": subreddit})
+
+
+@app.route("/api/watchlist")
+def api_watchlist():
+    """Return all watchlist entries."""
+    with get_session() as session:
+        rows = session.execute(sa_text(
+            "SELECT subreddit, ticker, auto_discovered, active, added_at "
+            "FROM watchlist ORDER BY added_at DESC"
+        )).fetchall()
+    return jsonify([{
+        "subreddit": r[0], "ticker": r[1],
+        "auto_discovered": bool(r[2]), "active": bool(r[3]), "added_at": str(r[4])
+    } for r in rows])
+
+
+@app.route("/api/watchlist/<subreddit>/deactivate", methods=["POST"])
+def deactivate_watchlist(subreddit):
+    """Deactivate a watchlist entry (stop scraping it)."""
+    with get_session() as session:
+        session.execute(sa_text(
+            "UPDATE watchlist SET active=0 WHERE subreddit=:sub"
+        ), {"sub": subreddit})
+    return jsonify({"status": "deactivated", "subreddit": subreddit})
+
+
+@app.route("/api/discovered")
+def api_discovered():
+    """Return all discovered subreddits as JSON (backward compat)."""
+    with get_session() as session:
+        from database import DiscoveredSubreddit
+        rows = session.query(DiscoveredSubreddit).order_by(
+            DiscoveredSubreddit.members.desc()
+        ).all()
+        discovered = [
+            {
+                "subreddit": d.subreddit,
+                "ticker": d.ticker,
+                "members": d.members,
+                "source": d.source,
+                "approved": bool(d.approved),
+                "status": d.status,
+            }
+            for d in rows
+        ]
+    return jsonify(discovered)
+
+
+@app.route("/api/discover_now", methods=["POST"])
+def api_discover_now():
+    """Manually trigger discovery cycle (returns status)."""
+    try:
+        run_discovery_cycle()
+        return jsonify({"status": "ok", "message": "Discovery cycle completed"})
+    except Exception as e:
+        logger.error("Manual discovery failed: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/price/<ticker>")
 def api_price(ticker):
     """Fetch current price via yfinance. Gracefully returns null on failure."""
@@ -143,6 +247,32 @@ def api_price(ticker):
         return jsonify({"ticker": ticker, "price": None, "previous_close": None, "change_pct": None})
 
 
+# Background thread reference for the seed job
+_seed_thread = None
+
+
+@app.route("/admin/seed")
+def admin_seed():
+    """Trigger the one-time S&P 500 ticker probe. Protect with token query param."""
+    if request.args.get("token") != ADMIN_SEED_TOKEN:
+        return jsonify({"error": "unauthorized"}), 403
+    global _seed_thread
+    if _seed_thread and _seed_thread.is_alive():
+        return jsonify({"status": "already_running"})
+    _seed_thread = threading.Thread(target=discover_from_tickers, daemon=True)
+    _seed_thread.start()
+    return jsonify({"status": "started", "message": "Ticker probe running in background. Takes 2-4 hours."})
+
+
+@app.route("/admin/seed/stop")
+def admin_seed_stop():
+    """Stop the running ticker seed job."""
+    if request.args.get("token") != ADMIN_SEED_TOKEN:
+        return jsonify({"error": "unauthorized"}), 403
+    stop_seed_job()
+    return jsonify({"status": "stop_requested"})
+
+
 if __name__ == "__main__":
     logger.info("Initializing database...")
     init_db()
@@ -157,6 +287,12 @@ if __name__ == "__main__":
         check_and_record_alerts()
     except Exception as e:
         logger.error("Initial alert check failed: %s", e)
+
+    logger.info("Running initial discovery cycle...")
+    try:
+        run_discovery_cycle()
+    except Exception as e:
+        logger.error("Initial discovery failed: %s", e)
 
     logger.info("Starting scheduler...")
     scheduler = create_scheduler()

@@ -5,8 +5,7 @@ import time
 
 import requests
 
-from config import WATCHLIST
-from database import Snapshot, get_session
+from database import Snapshot, Watchlist, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +19,16 @@ _SESSION = requests.Session()
 _SESSION.headers.update(_HEADERS)
 
 
+def get_active_watchlist():
+    """Return list of (subreddit, ticker) tuples from the DB watchlist."""
+    with get_session() as session:
+        entries = session.query(Watchlist).filter_by(active=True).all()
+        return [(e.subreddit, e.ticker) for e in entries]
+
+
 def scrape_all():
     """
-    For each subreddit in WATCHLIST:
+    For each active subreddit in the DB watchlist:
       1. GET https://www.reddit.com/r/{name}/about.json
       2. Extract subscribers as members and accounts_active as active_users
       3. Create a Snapshot record and commit to DB
@@ -30,11 +36,12 @@ def scrape_all():
       5. Sleep 2 seconds between requests to respect rate limits
     Catch all exceptions per-subreddit so one failure doesn't stop the rest.
     """
-    logger.info("Starting scrape cycle for %d subreddits", len(WATCHLIST))
+    watchlist = get_active_watchlist()
+    logger.info("Starting scrape cycle for %d subreddits", len(watchlist))
     success_count = 0
     fail_count = 0
 
-    for subreddit_name, ticker in WATCHLIST.items():
+    for subreddit_name, ticker in watchlist:
         try:
             url = f"https://www.reddit.com/r/{subreddit_name}/about.json"
             resp = _SESSION.get(url, timeout=15)
@@ -77,8 +84,7 @@ def scrape_all():
             fail_count += 1
 
         # Sleep 2 seconds between requests to respect rate limits
-        if subreddit_name != list(WATCHLIST.keys())[-1]:
-            time.sleep(2)
+        time.sleep(2)
 
     logger.info(
         "Scrape cycle complete: %d succeeded, %d failed", success_count, fail_count
