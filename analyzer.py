@@ -123,46 +123,77 @@ def get_velocity(subreddit, hours=24):
 
     velocity_pct = (latest_members - members_N_hours_ago) / members_N_hours_ago * 100
 
-    Returns None if there is no snapshot older than `hours` for comparison.
+    If no snapshot exists from exactly `hours` ago, falls back to the oldest
+    available snapshot and normalizes the growth rate to a 24h-equivalent.
+    Returns None if there are fewer than 2 snapshots.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
 
     with get_session() as session:
         # Latest snapshot
         latest_row = session.execute(
             text(
-                "SELECT members FROM snapshots "
+                "SELECT members, captured_at FROM snapshots "
                 "WHERE subreddit = :sub AND captured_at <= :now "
                 "ORDER BY captured_at DESC LIMIT 1"
             ),
-            {"sub": subreddit, "now": datetime.now(timezone.utc).isoformat()},
+            {"sub": subreddit, "now": now.isoformat()},
         ).fetchone()
 
         if latest_row is None:
             return None
 
+        latest_members = latest_row[0]
+        latest_time = latest_row[1]
+
         # Snapshot closest to `hours` ago
         past_row = session.execute(
             text(
-                "SELECT members FROM snapshots "
+                "SELECT members, captured_at FROM snapshots "
                 "WHERE subreddit = :sub AND captured_at <= :cutoff "
                 "ORDER BY captured_at DESC LIMIT 1"
             ),
             {"sub": subreddit, "cutoff": cutoff.isoformat()},
         ).fetchone()
 
-        if past_row is None or past_row[0] == 0:
+        if past_row is not None and past_row[0] > 0:
+            # Ideal case: we have a snapshot from 24h+ ago
+            velocity_pct = (latest_members - past_row[0]) / past_row[0] * 100
+            return round(velocity_pct, 4)
+
+        # Fallback: use the oldest snapshot and normalize to 24h equivalent
+        oldest_row = session.execute(
+            text(
+                "SELECT members, captured_at FROM snapshots "
+                "WHERE subreddit = :sub AND captured_at < :latest_time "
+                "ORDER BY captured_at ASC LIMIT 1"
+            ),
+            {"sub": subreddit, "latest_time": latest_time.isoformat() if latest_time else now.isoformat()},
+        ).fetchone()
+
+        if oldest_row is None or oldest_row[0] == 0 or oldest_row[1] is None:
             return None
 
-        velocity_pct = (latest_row[0] - past_row[0]) / past_row[0] * 100
-        return round(velocity_pct, 4)
+        # Compute raw growth and normalize to 24h
+        raw_pct = (latest_members - oldest_row[0]) / oldest_row[0] * 100
+        time_diff_hours = (latest_time - oldest_row[1]).total_seconds() / 3600
+
+        if time_diff_hours <= 0:
+            return None
+
+        # Normalize: if growth was X% over Y hours, 24h-equivalent is X * (24/Y)
+        normalized_pct = raw_pct * (hours / time_diff_hours)
+        return round(normalized_pct, 4)
 
 
 def get_acceleration(subreddit):
     """
-    Compute acceleration: change in velocity between two consecutive 24h windows.
+    Compute acceleration: change in velocity between two consecutive windows.
 
-    acceleration = velocity_last_24h - velocity_24h_to_48h_ago
+    Ideal: velocity_last_24h - velocity_24h_to_48h_ago
+    Fallback: split available snapshots into two halves, compute normalized
+    velocity for each half, and return the difference.
 
     Positive = growth is speeding up. Returns None if insufficient data.
     """
@@ -171,7 +202,7 @@ def get_acceleration(subreddit):
     cutoff_48h = now - timedelta(hours=48)
 
     with get_session() as session:
-        # Latest snapshot
+        # Try ideal case first: we have 24h and 48h data
         latest_row = session.execute(
             text(
                 "SELECT members FROM snapshots "
@@ -181,7 +212,6 @@ def get_acceleration(subreddit):
             {"sub": subreddit, "now": now.isoformat()},
         ).fetchone()
 
-        # Snapshot ~24h ago
         row_24h = session.execute(
             text(
                 "SELECT members FROM snapshots "
@@ -191,7 +221,6 @@ def get_acceleration(subreddit):
             {"sub": subreddit, "cutoff": cutoff_24h.isoformat()},
         ).fetchone()
 
-        # Snapshot ~48h ago
         row_48h = session.execute(
             text(
                 "SELECT members FROM snapshots "
@@ -202,18 +231,49 @@ def get_acceleration(subreddit):
         ).fetchone()
 
         if (
-            latest_row is None
-            or row_24h is None
-            or row_48h is None
-            or row_24h[0] == 0
-            or row_48h[0] == 0
+            latest_row is not None
+            and row_24h is not None
+            and row_48h is not None
+            and row_24h[0] > 0
+            and row_48h[0] > 0
         ):
+            velocity_last_24h = (latest_row[0] - row_24h[0]) / row_24h[0] * 100
+            velocity_24h_to_48h = (row_24h[0] - row_48h[0]) / row_48h[0] * 100
+            acceleration = velocity_last_24h - velocity_24h_to_48h
+            return round(acceleration, 4)
+
+        # Fallback: split all snapshots into two halves and compare velocities
+        rows = session.execute(
+            text(
+                "SELECT captured_at, members FROM snapshots "
+                "WHERE subreddit = :sub ORDER BY captured_at ASC"
+            ),
+            {"sub": subreddit},
+        ).fetchall()
+
+        if len(rows) < 3:
             return None
 
-        velocity_last_24h = (latest_row[0] - row_24h[0]) / row_24h[0] * 100
-        velocity_24h_to_48h = (row_24h[0] - row_48h[0]) / row_48h[0] * 100
+        mid = len(rows) // 2
+        first_half = rows[:mid]
+        second_half = rows[mid:]
 
-        acceleration = velocity_last_24h - velocity_24h_to_48h
+        def _half_velocity(half):
+            if len(half) < 2 or half[0][1] == 0:
+                return None
+            raw_pct = (half[-1][1] - half[0][1]) / half[0][1] * 100
+            time_diff_hours = (half[-1][0] - half[0][0]).total_seconds() / 3600
+            if time_diff_hours <= 0:
+                return None
+            return raw_pct * (24 / time_diff_hours)
+
+        v_first = _half_velocity(first_half)
+        v_second = _half_velocity(second_half)
+
+        if v_first is None or v_second is None:
+            return None
+
+        acceleration = v_second - v_first
         return round(acceleration, 4)
 
 
@@ -279,7 +339,15 @@ def get_leaderboard(limit=20, ticker_only=False):
                 {"sub": subreddit_name, "cutoff": cutoff_7d.isoformat()},
             ).fetchone()
 
-            members_7d_ago = row_7d[0] if row_7d is not None else None
+            if row_7d is not None:
+                members_7d_ago = row_7d[0]
+            else:
+                # Fallback: use the oldest snapshot as baseline
+                oldest = session.execute(
+                    text("SELECT members FROM snapshots WHERE subreddit = :sub ORDER BY captured_at ASC LIMIT 1"),
+                    {"sub": subreddit_name},
+                ).fetchone()
+                members_7d_ago = oldest[0] if oldest is not None else None
 
         velocity = get_velocity(subreddit_name, hours=24)
         acceleration = get_acceleration(subreddit_name)
