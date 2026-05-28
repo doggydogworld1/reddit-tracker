@@ -217,7 +217,7 @@ def get_acceleration(subreddit):
         return round(acceleration, 4)
 
 
-def get_leaderboard(limit=20):
+def get_leaderboard(limit=20, ticker_only=False):
     """
     Return a list of dicts for each subreddit, sorted by velocity_pct descending.
 
@@ -226,6 +226,7 @@ def get_leaderboard(limit=20):
         members_7d_ago (for sparkline baseline)
 
     Only includes subreddits with at least 2 snapshots.
+    If ticker_only=True, only include subreddits with a non-null ticker.
     """
     now = datetime.now(timezone.utc)
     cutoff_7d = now - timedelta(days=7)
@@ -233,11 +234,10 @@ def get_leaderboard(limit=20):
     results = []
 
     with get_session() as session:
-        active_entries = (
-            session.query(Watchlist.subreddit, Watchlist.ticker)
-            .filter_by(active=True)
-            .all()
-        )
+        query = session.query(Watchlist.subreddit, Watchlist.ticker).filter_by(active=True)
+        if ticker_only:
+            query = query.filter(Watchlist.ticker.isnot(None))
+        active_entries = query.all()
 
     for entry in active_entries:
         subreddit_name = entry.subreddit

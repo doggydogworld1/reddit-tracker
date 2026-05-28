@@ -68,13 +68,54 @@ def _is_finance_subreddit(name, description):
     return any(kw in combined for kw in FINANCE_KEYWORDS)
 
 
+# ── Single-ticker filter ──────────────────────────────────────────────────────
+
+GENERAL_FINANCE_SUBS = {
+    "wallstreetbets", "wsb", "investing", "stocks", "stockmarket",
+    "options", "securityanalysis", "pennystocks", "daytrading",
+    "dividends", "valueinvesting", "algotrading", "robinhood",
+    "spacs", "weedstocks", "thetagang", "shortsqueeze", "finance",
+    "personalfinance", "financialindependence", "fatfire", "leanfire",
+    "bogleheads", "mutualfunds", "etfs", "stockanalysis",
+    "dividendinvesting", "investingforbeginners", "investing_discussion",
+    "stocktwits", "stockmarketindia", "indianstockmarket", "indiastockmarket",
+    "asx", "phinvest", "personalfinancecanada", "monarchmoney",
+    "fluentinfinance", "investmentclub",
+}
+
+GENERIC_WORDS_IN_NAME = {
+    "stock", "invest", "trade", "market", "penny", "value",
+    "growth", "dividend", "bull", "bear", "financial",
+}
+
+
+def _is_single_ticker_sub(name, ticker_guess=None):
+    """
+    Returns True if this subreddit appears to be dedicated to one stock.
+    Heuristic: name closely matches a ticker symbol or ticker_guess was provided.
+    Returns False for known general finance communities.
+    """
+    name_lower = name.lower()
+    if name_lower in GENERAL_FINANCE_SUBS:
+        return False
+    # If we got here via ticker probe, it's almost certainly single-ticker
+    if ticker_guess:
+        return True
+    # For search/sidebar discoveries with no ticker guess, require the name
+    # to look like a ticker (no generic finance words)
+    if any(w in name_lower for w in GENERIC_WORDS_IN_NAME):
+        return False
+    return True
+
+
 def _upsert_discovery(subreddit, ticker_guess, members, discovered_via, description=""):
     """Insert into discovered_subreddits if not already present. Uses INSERT OR IGNORE for SQLite."""
+    is_single = 1 if _is_single_ticker_sub(subreddit, ticker_guess) else 0
     with get_session() as session:
         session.execute(text(
             "INSERT OR IGNORE INTO discovered_subreddits "
-            "(subreddit, ticker, members, source, discovered_via, ticker_guess, description, approved, status) "
-            "VALUES (:sub, :ticker, :members, :via, :via, :tg, :desc, 0, 'pending')"
+            "(subreddit, ticker, members, source, discovered_via, ticker_guess, description, approved, status, is_single_ticker) "
+            "VALUES (:sub, :ticker, :members, :via, :via, :tg, :desc, 0, 'pending', :ist)"
         ), {
             "sub": subreddit,
             "ticker": ticker_guess,
@@ -82,6 +123,7 @@ def _upsert_discovery(subreddit, ticker_guess, members, discovered_via, descript
             "via": discovered_via,
             "tg": ticker_guess,
             "desc": description,
+            "ist": is_single,
         })
 
 
@@ -251,6 +293,14 @@ def promote_approved_discoveries(min_members=1000):
             continue
         if not _is_finance_subreddit(subreddit, desc):
             # Auto-reject obvious false positives
+            with get_session() as session:
+                session.execute(text(
+                    "UPDATE discovered_subreddits SET status='rejected' WHERE subreddit=:sub"
+                ), {"sub": subreddit})
+            continue
+        # Reject general (non-single-ticker) finance communities
+        if not _is_single_ticker_sub(subreddit, ticker_guess):
+            logger.info("Rejecting general finance sub r/%s (ticker_guess=%s)", subreddit, ticker_guess)
             with get_session() as session:
                 session.execute(text(
                     "UPDATE discovered_subreddits SET status='rejected' WHERE subreddit=:sub"

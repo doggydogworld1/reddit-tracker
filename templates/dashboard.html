@@ -131,9 +131,13 @@
         <div class="leaderboard-section">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
                 <div class="section-title" style="margin-bottom:0">Leaderboard — Fastest Growing Communities</div>
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:8px;align-items:center;">
                     <button id="btn-organic" onclick="setSort('organic')" class="sort-btn active">Organic score</button>
                     <button id="btn-velocity" onclick="setSort('velocity')" class="sort-btn">Raw velocity</button>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:#8b949e;cursor:pointer;margin-left:8px;">
+                        <input type="checkbox" id="chk-ticker-only" checked onchange="fetchLeaderboard()" style="accent-color:#1f6feb;">
+                        Single-ticker only
+                    </label>
                 </div>
             </div>
             <table id="leaderboard-table">
@@ -277,7 +281,8 @@
         // ── Leaderboard ────────────────────────────────────────────────────────
         async function fetchLeaderboard() {
             try {
-                const resp = await fetch(`/api/leaderboard?limit=20&sort=${currentSort}`);
+                const tickerOnly = document.getElementById('chk-ticker-only').checked;
+                const resp = await fetch(`/api/leaderboard?limit=20&sort=${currentSort}&ticker_only=${tickerOnly}`);
                 leaderboardData = await resp.json();
                 renderLeaderboard(leaderboardData);
             } catch (e) {

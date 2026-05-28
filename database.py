@@ -153,13 +153,41 @@ def migrate_discovered_subreddits():
             conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN ticker_guess TEXT"))
         if "description" not in existing:
             conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN description TEXT"))
+        if "is_single_ticker" not in existing:
+            conn.execute(text("ALTER TABLE discovered_subreddits ADD COLUMN is_single_ticker BOOLEAN DEFAULT 0"))
         conn.commit()
     # Backfill: set status based on existing 'approved' column
     with engine.connect() as conn:
         conn.execute(text("UPDATE discovered_subreddits SET status='promoted' WHERE approved=1 AND status IS NULL"))
         conn.execute(text("UPDATE discovered_subreddits SET status='pending' WHERE approved=0 AND status IS NULL"))
+        # Backfill is_single_ticker based on ticker_guess presence
+        conn.execute(text("UPDATE discovered_subreddits SET is_single_ticker=1 WHERE ticker_guess IS NOT NULL AND ticker_guess != ''"))
         conn.commit()
     logger.info("Discovered subreddits migration complete")
+
+
+# ── One-time cleanup: deactivate general finance subs ─────────────────────────
+
+GENERAL_SUBS_TO_DEACTIVATE = [
+    "wallstreetbets", "investing", "stocks", "options", "SecurityAnalysis",
+    "SPACs", "pennystocks", "StockMarket", "Daytrading", "dividends",
+    "ValueInvesting", "algotrading", "RobinHood", "weedstocks", "BBBY",
+    "finance", "stockmarket", "personalfinance",
+]
+
+
+def deactivate_general_subs():
+    """One-time cleanup: mark known general finance subs as inactive in watchlist."""
+    with get_session() as session:
+        deactivated = 0
+        for sub in GENERAL_SUBS_TO_DEACTIVATE:
+            result = session.execute(text(
+                "UPDATE watchlist SET active=0 WHERE LOWER(subreddit)=LOWER(:sub)"
+            ), {"sub": sub})
+            deactivated += result.rowcount
+        session.commit()
+        if deactivated:
+            logger.info("Deactivated %d general finance subreddit entries from watchlist", deactivated)
 
 
 def init_db():
@@ -167,4 +195,5 @@ def init_db():
     Base.metadata.create_all(engine)
     migrate_discovered_subreddits()
     seed_watchlist_from_config()
+    deactivate_general_subs()
     logger.info("Database initialized (tables created if missing)")

@@ -70,10 +70,11 @@ def dashboard():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    """Return leaderboard data as JSON. ?sort=organic (default) or ?sort=velocity."""
+    """Return leaderboard data as JSON. ?sort=organic (default) or ?sort=velocity. ?ticker_only=true (default)."""
     limit = request.args.get("limit", 50, type=int)
     sort = request.args.get("sort", "organic")
-    data = get_leaderboard(limit)
+    ticker_only = request.args.get("ticker_only", "true").lower() == "true"
+    data = get_leaderboard(limit, ticker_only=ticker_only)
     if sort == "velocity":
         data = sorted(data, key=lambda r: r["velocity_pct"] or 0, reverse=True)
     # organic sort is already default from get_leaderboard()
