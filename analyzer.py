@@ -127,7 +127,11 @@ def get_leaderboard(limit=20):
     results = []
 
     with get_session() as session:
-        active_entries = session.query(Watchlist).filter_by(active=True).all()
+        active_entries = (
+            session.query(Watchlist.subreddit, Watchlist.ticker)
+            .filter_by(active=True)
+            .all()
+        )
 
     for entry in active_entries:
         subreddit_name = entry.subreddit
@@ -227,7 +231,11 @@ def check_and_record_alerts():
     new_alerts = []
 
     with get_session() as session:
-        active_entries = session.query(Watchlist).filter_by(active=True).all()
+        active_entries = (
+            session.query(Watchlist.subreddit, Watchlist.ticker)
+            .filter_by(active=True)
+            .all()
+        )
 
     for entry in active_entries:
         subreddit_name = entry.subreddit
