@@ -10,6 +10,14 @@ from database import Snapshot, Alert, Watchlist, get_session
 
 logger = logging.getLogger(__name__)
 
+
+def _ensure_datetime(val):
+    """Convert string timestamps from SQLite to datetime objects."""
+    if isinstance(val, str):
+        return datetime.fromisoformat(val)
+    return val
+
+
 # ── Price move cache ──────────────────────────────────────────────────────────
 _price_cache = {}  # key: "{ticker}_{days}d_{date}" → (pct_change, timestamp)
 
@@ -146,6 +154,9 @@ def get_velocity(subreddit, hours=24):
 
         latest_members = latest_row[0]
         latest_time = latest_row[1]
+        # Ensure latest_time is a datetime object (SQLite may return strings)
+        if isinstance(latest_time, str):
+            latest_time = datetime.fromisoformat(latest_time)
 
         # Snapshot closest to `hours` ago
         past_row = session.execute(
@@ -177,7 +188,8 @@ def get_velocity(subreddit, hours=24):
 
         # Compute raw growth and normalize to 24h
         raw_pct = (latest_members - oldest_row[0]) / oldest_row[0] * 100
-        time_diff_hours = (latest_time - oldest_row[1]).total_seconds() / 3600
+        oldest_time = _ensure_datetime(oldest_row[1])
+        time_diff_hours = (latest_time - oldest_time).total_seconds() / 3600
 
         if time_diff_hours <= 0:
             return None
@@ -262,7 +274,9 @@ def get_acceleration(subreddit):
             if len(half) < 2 or half[0][1] == 0:
                 return None
             raw_pct = (half[-1][1] - half[0][1]) / half[0][1] * 100
-            time_diff_hours = (half[-1][0] - half[0][0]).total_seconds() / 3600
+            t_start = _ensure_datetime(half[0][0])
+            t_end = _ensure_datetime(half[-1][0])
+            time_diff_hours = (t_end - t_start).total_seconds() / 3600
             if time_diff_hours <= 0:
                 return None
             return raw_pct * (24 / time_diff_hours)
@@ -394,7 +408,10 @@ def get_history(subreddit, days=30):
         ).fetchall()
 
     return [
-        {"timestamp": row[0].isoformat() if row[0] else None, "members": row[1]}
+        {
+            "timestamp": _ensure_datetime(row[0]).isoformat() if row[0] else None,
+            "members": row[1],
+        }
         for row in rows
     ]
 
@@ -453,7 +470,9 @@ def check_and_record_alerts():
                 continue
 
             # Normalize to daily velocity
-            time_diff_hours = (curr_time - prev_time).total_seconds() / 3600
+            prev_dt = _ensure_datetime(prev_time)
+            curr_dt = _ensure_datetime(curr_time)
+            time_diff_hours = (curr_dt - prev_dt).total_seconds() / 3600
             if time_diff_hours <= 0:
                 continue
 
