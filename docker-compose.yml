@@ -1,0 +1,13 @@
+services:
+  reddit-tracker:
+    build: .
+    user: "0:0"
+    network_mode: host
+    environment:
+      SCRAPE_INTERVAL_HOURS: ${SCRAPE_INTERVAL_HOURS:-4}
+      SURGE_MULTIPLIER: ${SURGE_MULTIPLIER:-3.0}
+      FLASK_PORT: ${FLASK_PORT:-5050}
+      FLASK_DEBUG: ${FLASK_DEBUG:-false}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,4 +1,4 @@
 .env
-reddit_tracker.db
+data/
 __pycache__/
 *.pyc

@@ -1,4 +1,4 @@
-DATABASE_URL = "sqlite:///reddit_tracker.db"
+DATABASE_URL = "sqlite:///data/reddit_tracker.db"
 
 SCRAPE_INTERVAL_HOURS = 4   # how often to collect snapshots
 
