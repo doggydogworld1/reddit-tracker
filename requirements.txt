@@ -1,0 +1,5 @@
+requests>=2.31
+sqlalchemy>=2.0
+apscheduler>=3.10
+flask>=3.0
+yfinance>=0.2

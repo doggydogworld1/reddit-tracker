@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Stock Community Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Header */
+        .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .header h1 { font-size: 20px; font-weight: 600; color: #f0f6fc; }
+        .header-stats { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .pill { background: #21262d; border: 1px solid #30363d; border-radius: 16px; padding: 4px 14px; font-size: 13px; color: #8b949e; }
+        .pill strong { color: #f0f6fc; }
+        .last-updated { font-size: 12px; color: #8b949e; }
+
+        /* Main */
+        .main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+
+        /* Leaderboard */
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #f0f6fc; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #30363d; color: #8b949e; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tbody tr { border-bottom: 1px solid #21262d; transition: background 0.15s; cursor: pointer; }
+        tbody tr:hover { background: #161b22; }
+        tbody td { padding: 10px 12px; vertical-align: middle; }
+        .rank { color: #8b949e; font-weight: 600; width: 40px; }
+        .subreddit-name { font-weight: 500; color: #58a6ff; }
+        .ticker-badge { background: #1f2937; color: #58a6ff; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+        .members { font-variant-numeric: tabular-nums; }
+        .positive { color: #3fb950; }
+        .negative { color: #f85149; }
+        .neutral { color: #8b949e; }
+        .acceleration-cell { font-weight: 500; }
+        .sparkline-cell { width: 120px; height: 40px; }
+        .sparkline-cell canvas { width: 100% !important; height: 40px !important; }
+        .price-cell { font-variant-numeric: tabular-nums; }
+
+        /* Row borders for acceleration */
+        .row-accel-up { border-left: 3px solid #238636; }
+        .row-accel-down { border-left: 3px solid #da3633; }
+        .row-accel-neutral { border-left: 3px solid #30363d; }
+
+        /* Detail panel */
+        .detail-panel { display: none; background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin: 8px 0 16px 0; padding: 20px; }
+        .detail-panel.active { display: block; }
+        .detail-panel h3 { margin-bottom: 12px; font-size: 15px; color: #f0f6fc; }
+        .detail-chart-container { height: 250px; position: relative; }
+        .detail-chart-container canvas { width: 100% !important; height: 250px !important; }
+
+        /* Alerts */
+        .alerts-section { margin-top: 32px; }
+        .alerts-toggle { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 12px 20px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #f0f6fc; font-size: 15px; font-weight: 600; width: 100%; }
+        .alerts-toggle:hover { background: #30363d; }
+        .alerts-toggle .arrow { transition: transform 0.2s; font-size: 12px; }
+        .alerts-toggle .arrow.open { transform: rotate(180deg); }
+        .alerts-list { display: none; margin-top: 8px; }
+        .alerts-list.open { display: block; }
+        .alert-item { background: #161b22; border: 1px solid #30363d; border-left: 3px solid #d29922; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
+        .alert-item .alert-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .alert-item .alert-subreddit { font-weight: 600; color: #f0f6fc; }
+        .alert-item .alert-time { font-size: 12px; color: #8b949e; }
+        .alert-item .alert-detail { font-size: 13px; color: #8b949e; }
+        .alert-item .alert-detail strong { color: #d29922; }
+
+        /* Loading */
+        .loading { text-align: center; padding: 40px; color: #8b949e; }
+
+        /* No data */
+        .no-data { color: #484f58; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <h1>📈 Reddit Stock Community Tracker</h1>
+        <div class="header-stats">
+            <span class="pill"><strong>{{ total_subreddits }}</strong> subreddits tracked</span>
+            <span class="pill"><strong>{{ snapshot_count }}</strong> snapshots</span>
+            <span class="pill"><strong>{{ alert_count }}</strong> alerts (7d)</span>
+            <span class="last-updated">{% if last_updated %}Last updated: {{ last_updated }}{% else %}No data yet{% endif %}</span>
+        </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main">
+
+        <!-- Leaderboard -->
+        <div class="leaderboard-section">
+            <div class="section-title">Leaderboard — Fastest Growing Communities</div>
+            <table id="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Subreddit</th>
+                        <th>Ticker</th>
+                        <th>Members</th>
+                        <th>24h Growth %</th>
+                        <th>Acceleration</th>
+                        <th>7-Day Trend</th>
+                        <th>Price</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body">
+                    <tr><td colspan="8" class="loading">Loading leaderboard...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Alerts -->
+        <div class="alerts-section">
+            <button class="alerts-toggle" id="alerts-toggle" onclick="toggleAlerts()">
+                <span>🚨 Surge Alerts (last 20)</span>
+                <span class="arrow" id="alerts-arrow">▼</span>
+            </button>
+            <div class="alerts-list" id="alerts-list">
+                <div class="loading">Loading alerts...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ── State ──────────────────────────────────────────────────────────────
+        let leaderboardData = [];
+        let sparklineCharts = {};
+        let detailChart = null;
+        let expandedRow = null;
+
+        // ── Format helpers ─────────────────────────────────────────────────────
+        function fmtPct(val) {
+            if (val === null || val === undefined) return '<span class="no-data">—</span>';
+            const sign = val >= 0 ? '+' : '';
+            const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
+            return `<span class="${cls}">${sign}${val.toFixed(2)}%</span>`;
+        }
+
+        function fmtNum(val) {
+            if (val === null || val === undefined) return '<span class="no-data">—</span>';
+            return val.toLocaleString();
+        }
+
+        function fmtAccel(val) {
+            if (val === null || val === undefined) return '<span class="no-data">—</span>';
+            const sign = val >= 0 ? '+' : '';
+            const cls = val > 0.5 ? 'positive' : val < -0.5 ? 'negative' : 'neutral';
+            return `<span class="${cls} acceleration-cell">${sign}${val.toFixed(3)}%/h</span>`;
+        }
+
+        function rowBorderClass(accel) {
+            if (accel === null || accel === undefined) return 'row-accel-neutral';
+            if (accel > 0.5) return 'row-accel-up';
+            if (accel < -0.5) return 'row-accel-down';
+            return 'row-accel-neutral';
+        }
+
+        // ── Leaderboard ────────────────────────────────────────────────────────
+        async function fetchLeaderboard() {
+            try {
+                const resp = await fetch('/api/leaderboard?limit=20');
+                leaderboardData = await resp.json();
+                renderLeaderboard(leaderboardData);
+            } catch (e) {
+                console.error('Failed to fetch leaderboard:', e);
+                document.getElementById('leaderboard-body').innerHTML =
+                    '<tr><td colspan="8" class="loading">Failed to load data. Will retry...</td></tr>';
+            }
+        }
+
+        function renderLeaderboard(data) {
+            const tbody = document.getElementById('leaderboard-body');
+            tbody.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="loading">No data yet. Wait for at least 2 scrape cycles.</td></tr>';
+                return;
+            }
+
+            data.forEach((item, idx) => {
+                // Main row
+                const tr = document.createElement('tr');
+                tr.className = rowBorderClass(item.acceleration);
+                tr.dataset.subreddit = item.subreddit;
+                tr.onclick = () => toggleDetail(item.subreddit, tr);
+
+                tr.innerHTML = `
+                    <td class="rank">${idx + 1}</td>
+                    <td><span class="subreddit-name">r/${item.subreddit}</span></td>
+                    <td>${item.ticker ? `<span class="ticker-badge">${item.ticker}</span>` : '<span class="no-data">—</span>'}</td>
+                    <td class="members">${fmtNum(item.members)}</td>
+                    <td>${fmtPct(item.velocity_pct)}</td>
+                    <td>${fmtAccel(item.acceleration)}</td>
+                    <td class="sparkline-cell"><canvas id="spark-${item.subreddit}" width="120" height="40"></canvas></td>
+                    <td class="price-cell" id="price-${item.subreddit}"><span class="no-data">—</span></td>
+                `;
+                tbody.appendChild(tr);
+
+                // Detail panel (hidden)
+                const detailTr = document.createElement('tr');
+                detailTr.id = `detail-row-${item.subreddit}`;
+                detailTr.style.display = 'none';
+                detailTr.innerHTML = `<td colspan="8"><div class="detail-panel" id="detail-panel-${item.subreddit}">
+                    <h3>r/${item.subreddit} — 30-Day Membership History</h3>
+                    <div class="detail-chart-container"><canvas id="detail-chart-${item.subreddit}"></canvas></div>
+                </div></td>`;
+                tbody.appendChild(detailTr);
+
+                // Fetch price if ticker exists
+                if (item.ticker) {
+                    fetchPrice(item.subreddit, item.ticker);
+                }
+            });
+
+            // Draw sparklines after DOM is ready
+            requestAnimationFrame(() => drawSparklines(data));
+        }
+
+        // ── Sparklines ─────────────────────────────────────────────────────────
+        async function drawSparklines(data) {
+            for (const item of data) {
+                try {
+                    const resp = await fetch(`/api/history/${item.subreddit}?days=7`);
+                    const history = await resp.json();
+                    if (!history || history.length < 2) continue;
+
+                    const canvas = document.getElementById(`spark-${item.subreddit}`);
+                    if (!canvas) continue;
+
+                    const labels = history.map(h => h.timestamp);
+                    const values = history.map(h => h.members);
+
+                    // Determine color based on trend
+                    const first = values[0];
+                    const last = values[values.length - 1];
+                    const color = last >= first ? '#3fb950' : '#f85149';
+
+                    if (sparklineCharts[item.subreddit]) {
+                        sparklineCharts[item.subreddit].destroy();
+                    }
+
+                    sparklineCharts[item.subreddit] = new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: values,
+                                borderColor: color,
+                                borderWidth: 1.5,
+                                fill: false,
+                                pointRadius: 0,
+                                tension: 0.3,
+                            }]
+                        },
+                        options: {
+                            responsive: false,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                            scales: {
+                                x: { display: false },
+                                y: { display: false }
+                            },
+                            animation: false,
+                        }
+                    });
+                } catch (e) {
+                    // Skip sparkline on error
+                }
+            }
+        }
+
+        // ── Detail panel ───────────────────────────────────────────────────────
+        async function toggleDetail(subreddit, row) {
+            const detailRow = document.getElementById(`detail-row-${subreddit}`);
+
+            if (expandedRow === subreddit) {
+                // Collapse
+                detailRow.style.display = 'none';
+                expandedRow = null;
+                return;
+            }
+
+            // Collapse previous
+            if (expandedRow) {
+                const prevRow = document.getElementById(`detail-row-${expandedRow}`);
+                if (prevRow) prevRow.style.display = 'none';
+            }
+
+            // Expand new
+            expandedRow = subreddit;
+            detailRow.style.display = 'table-row';
+
+            // Fetch history and draw chart
+            try {
+                const resp = await fetch(`/api/history/${subreddit}?days=30`);
+                const history = await resp.json();
+
+                const canvas = document.getElementById(`detail-chart-${subreddit}`);
+                if (!canvas) return;
+
+                if (detailChart) {
+                    detailChart.destroy();
+                    detailChart = null;
+                }
+
+                const labels = history.map(h => {
+                    const d = new Date(h.timestamp);
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const values = history.map(h => h.members);
+
+                detailChart = new Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Members',
+                            data: values,
+                            borderColor: '#58a6ff',
+                            backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#58a6ff',
+                            tension: 0.3,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return 'Members: ' + ctx.parsed.y.toLocaleString();
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#8b949e', maxTicksLimit: 10 },
+                                grid: { color: '#21262d' }
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#8b949e',
+                                    callback: function(val) { return (val / 1000).toFixed(0) + 'k'; }
+                                },
+                                grid: { color: '#21262d' }
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to load detail chart:', e);
+            }
+        }
+
+        // ── Price ──────────────────────────────────────────────────────────────
+        async function fetchPrice(subreddit, ticker) {
+            try {
+                const resp = await fetch(`/api/price/${ticker}`);
+                const data = await resp.json();
+                const cell = document.getElementById(`price-${subreddit}`);
+                if (!cell) return;
+
+                if (data.price !== null && data.price !== undefined) {
+                    const changeStr = data.change_pct !== null
+                        ? ` <span class="${data.change_pct >= 0 ? 'positive' : 'negative'}">${data.change_pct >= 0 ? '+' : ''}${data.change_pct}%</span>`
+                        : '';
+                    cell.innerHTML = `$${data.price}${changeStr}`;
+                }
+            } catch (e) {
+                // Leave as dash
+            }
+        }
+
+        // ── Alerts ─────────────────────────────────────────────────────────────
+        function toggleAlerts() {
+            const list = document.getElementById('alerts-list');
+            const arrow = document.getElementById('alerts-arrow');
+            list.classList.toggle('open');
+            arrow.classList.toggle('open');
+        }
+
+        async function fetchAlerts() {
+            try {
+                const resp = await fetch('/api/alerts');
+                const alerts = await resp.json();
+                renderAlerts(alerts.slice(0, 20));
+            } catch (e) {
+                console.error('Failed to fetch alerts:', e);
+            }
+        }
+
+        function renderAlerts(alerts) {
+            const container = document.getElementById('alerts-list');
+
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div class="alert-item"><div class="alert-detail">No surge alerts in the past 7 days.</div></div>';
+                return;
+            }
+
+            container.innerHTML = alerts.map(a => {
+                const time = a.triggered_at ? new Date(a.triggered_at).toLocaleString() : '—';
+                return `<div class="alert-item">
+                    <div class="alert-header">
+                        <span class="alert-subreddit">r/${a.subreddit}${a.ticker ? ` (${a.ticker})` : ''}</span>
+                        <span class="alert-time">${time}</span>
+                    </div>
+                    <div class="alert-detail">
+                        24h velocity: <strong>${a.velocity_pct !== null ? a.velocity_pct.toFixed(2) + '%' : '—'}</strong>
+                        vs 30d avg: <strong>${a.baseline_velocity_pct !== null ? a.baseline_velocity_pct.toFixed(2) + '%' : '—'}</strong>
+                        (<strong>${a.multiplier !== null ? a.multiplier.toFixed(1) + '×' : '—'}</strong> surge)
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Init ───────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchLeaderboard();
+            fetchAlerts();
+
+            // Auto-refresh leaderboard every 5 minutes
+            setInterval(fetchLeaderboard, 5 * 60 * 1000);
+        });
+    </script>
+
+</body>
+</html>
