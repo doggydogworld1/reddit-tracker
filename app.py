@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
+def _to_iso(val):
+    """Safely convert a datetime (or string from SQLite) to ISO format."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    return val.isoformat()
+
+
 @app.route("/")
 def dashboard():
     """Render the single-page dashboard."""
@@ -30,7 +39,7 @@ def dashboard():
         row = session.execute(
             sa_text("SELECT MAX(captured_at) FROM snapshots")
         ).fetchone()
-        last_updated = row[0].isoformat() if row and row[0] else None
+        last_updated = _to_iso(row[0]) if row and row[0] else None
 
         cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
         alert_row = session.execute(
@@ -92,7 +101,7 @@ def api_alerts():
                 "velocity_pct": row[3],
                 "baseline_velocity_pct": row[4],
                 "multiplier": row[5],
-                "triggered_at": row[6].isoformat() if row[6] else None,
+                "triggered_at": _to_iso(row[6]) if row[6] else None,
             }
             for row in rows
         ]
