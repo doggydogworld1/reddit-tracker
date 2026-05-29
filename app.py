@@ -70,11 +70,25 @@ def dashboard():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    """Return leaderboard data as JSON. ?sort=organic (default) or ?sort=velocity. ?ticker_only=true (default)."""
+    """Return leaderboard data as JSON. ?sort=organic (default) or ?sort=velocity. ?ticker_only=true (default). ?cap=small|mid|large|all."""
     limit = request.args.get("limit", 50, type=int)
     sort = request.args.get("sort", "organic")
     ticker_only = request.args.get("ticker_only", "true").lower() == "true"
+    cap = request.args.get("cap", "small")
     data = get_leaderboard(limit, ticker_only=ticker_only)
+
+    # Market cap filter
+    if cap == "small":
+        data = [r for r in data if r["market_cap"] is not None
+                and 500_000_000 <= r["market_cap"] <= 10_000_000_000]
+    elif cap == "mid":
+        data = [r for r in data if r["market_cap"] is not None
+                and 10_000_000_000 < r["market_cap"] <= 100_000_000_000]
+    elif cap == "large":
+        data = [r for r in data if r["market_cap"] is not None
+                and r["market_cap"] > 100_000_000_000]
+    # "all" returns everything including None market caps
+
     if sort == "velocity":
         data = sorted(data, key=lambda r: r["velocity_pct"] or 0, reverse=True)
     # organic sort is already default from get_leaderboard()

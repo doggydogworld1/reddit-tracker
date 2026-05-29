@@ -22,6 +22,42 @@ def _ensure_datetime(val):
 _price_cache = {}  # key: "{ticker}_{days}d_{date}" → (pct_change, timestamp)
 
 
+# ── Market cap cache ──────────────────────────────────────────────────────────
+# Cached daily: key = "{ticker}_mcap_{today}"
+
+
+def get_market_cap(ticker):
+    """Returns market cap in USD (raw number). Cached daily via _price_cache."""
+    if not ticker:
+        return None
+    today = date.today().isoformat()
+    cache_key = f"{ticker}_mcap_{today}"
+    if cache_key in _price_cache:
+        return _price_cache[cache_key]
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info
+        mcap = info.get("marketCap")
+        _price_cache[cache_key] = mcap
+        return mcap
+    except Exception:
+        _price_cache[cache_key] = None
+        return None
+
+
+def format_market_cap(mcap):
+    """Format market cap as human-readable string: $4.2B, $1.5T, etc."""
+    if mcap is None:
+        return None
+    if mcap >= 1_000_000_000_000:
+        return f"${mcap/1_000_000_000_000:.1f}T"
+    if mcap >= 1_000_000_000:
+        return f"${mcap/1_000_000_000:.1f}B"
+    if mcap >= 1_000_000:
+        return f"${mcap/1_000_000:.0f}M"
+    return f"${mcap:,.0f}"
+
+
 def get_price_move(ticker, lookback_days=1):
     """
     Fetch the percentage price move for a ticker over the last N days.
@@ -381,6 +417,11 @@ def get_leaderboard(limit=20, ticker_only=False):
 
         # Remove legacy key if present
         row.pop("price_driven", None)
+
+        # Market cap (cached daily per ticker)
+        mcap = get_market_cap(entry.ticker)
+        row["market_cap"] = mcap
+        row["market_cap_fmt"] = format_market_cap(mcap)
 
         results.append(row)
 

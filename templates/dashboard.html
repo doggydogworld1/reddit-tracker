@@ -138,6 +138,11 @@
                         <input type="checkbox" id="chk-ticker-only" checked onchange="fetchLeaderboard()" style="accent-color:#1f6feb;">
                         Single-ticker only
                     </label>
+                    <span style="color:#30363d;margin:0 4px;">|</span>
+                    <button id="btn-cap-small" onclick="setCap('small')" class="sort-btn cap-btn active">💰 Small $0.5–10B</button>
+                    <button id="btn-cap-mid" onclick="setCap('mid')" class="sort-btn cap-btn">💰 Mid $10–100B</button>
+                    <button id="btn-cap-large" onclick="setCap('large')" class="sort-btn cap-btn">💰 Large $100B+</button>
+                    <button id="btn-cap-all" onclick="setCap('all')" class="sort-btn cap-btn">🌐 All</button>
                 </div>
             </div>
             <table id="leaderboard-table">
@@ -146,6 +151,7 @@
                         <th>#</th>
                         <th>Subreddit</th>
                         <th>Ticker</th>
+                        <th>Mkt Cap</th>
                         <th>Members</th>
                         <th>Organic Score</th>
                         <th>24h Growth %</th>
@@ -153,10 +159,11 @@
                         <th title="How much of the velocity score is retained after adjusting for recent price movement. 100% = stock was quiet. Lower = stock already moved.">Price Penalty</th>
                         <th>7-Day Trend</th>
                         <th>Price</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard-body">
-                    <tr><td colspan="10" class="loading">Loading leaderboard...</td></tr>
+                    <tr><td colspan="12" class="loading">Loading leaderboard...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -221,6 +228,16 @@
         let detailChart = null;
         let expandedRow = null;
         let currentSort = 'organic';
+        let currentCap = 'small';
+
+        // ── Cap filter ─────────────────────────────────────────────────────────
+        function setCap(cap) {
+            currentCap = cap;
+            document.querySelectorAll('.cap-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.getElementById('btn-cap-' + cap);
+            if (activeBtn) activeBtn.classList.add('active');
+            fetchLeaderboard();
+        }
 
         // ── Sort toggle ───────────────────────────────────────────────────────
         function setSort(mode) {
@@ -236,6 +253,17 @@
             const sign = val >= 0 ? '+' : '';
             const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
             return `<span class="${cls}">${sign}${val.toFixed(2)}%</span>`;
+        }
+
+        function fmtMktCap(fmt, raw) {
+            if (!fmt) return '<span class="no-data">—</span>';
+            let color = '#c9d1d9';
+            if (raw === null || raw === undefined) return '<span class="no-data">—</span>';
+            if (raw < 1_000_000_000) color = '#8b949e';       // gray: sub-$1B
+            else if (raw <= 10_000_000_000) color = '#c9d1d9'; // normal: $1B–$10B
+            else if (raw <= 100_000_000_000) color = '#d29922'; // amber: $10B–$100B
+            else color = '#f85149';                              // red: >$100B large cap
+            return `<span style="color:${color};font-weight:500;">${fmt}</span>`;
         }
 
         function fmtPenalty(val) {
@@ -282,13 +310,13 @@
         async function fetchLeaderboard() {
             try {
                 const tickerOnly = document.getElementById('chk-ticker-only').checked;
-                const resp = await fetch(`/api/leaderboard?limit=20&sort=${currentSort}&ticker_only=${tickerOnly}`);
+                const resp = await fetch(`/api/leaderboard?limit=20&sort=${currentSort}&ticker_only=${tickerOnly}&cap=${currentCap}`);
                 leaderboardData = await resp.json();
                 renderLeaderboard(leaderboardData);
             } catch (e) {
                 console.error('Failed to fetch leaderboard:', e);
                 document.getElementById('leaderboard-body').innerHTML =
-                    '<tr><td colspan="10" class="loading">Failed to load data. Will retry...</td></tr>';
+                    '<tr><td colspan="12" class="loading">Failed to load data. Will retry...</td></tr>';
             }
         }
 
@@ -297,7 +325,7 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" class="loading">No data yet. Wait for at least 2 scrape cycles.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="loading">No data yet. Wait for at least 2 scrape cycles.</td></tr>';
                 return;
             }
 
@@ -323,6 +351,7 @@
                     <td class="rank">${idx + 1}</td>
                     <td><a class="subreddit-name" href="https://www.reddit.com/r/${item.subreddit}" target="_blank" rel="noopener" onclick="event.stopPropagation()">r/${item.subreddit}</a></td>
                     <td>${tickerHtml}</td>
+                    <td>${fmtMktCap(item.market_cap_fmt, item.market_cap)}</td>
                     <td class="members">${fmtNum(item.members)}</td>
                     <td>${item.organic_score !== null && item.organic_score !== undefined ? fmtPct(item.organic_score) : '<span class="no-data">—</span>'}</td>
                     <td>${fmtPct(item.velocity_pct)}</td>
@@ -330,6 +359,7 @@
                     <td>${fmtPenalty(item.price_penalty)}</td>
                     <td class="sparkline-cell"><canvas id="spark-${item.subreddit}" width="120" height="40"></canvas></td>
                     <td class="price-cell" id="price-${item.subreddit}"><span class="no-data">—</span></td>
+                    <td><button class="btn-deactivate" onclick="event.stopPropagation();deactivateSubreddit('${item.subreddit}', this)" title="Stop tracking this subreddit">✕</button></td>
                 `;
                 tbody.appendChild(tr);
 
@@ -337,7 +367,7 @@
                 const detailTr = document.createElement('tr');
                 detailTr.id = `detail-row-${item.subreddit}`;
                 detailTr.style.display = 'none';
-                detailTr.innerHTML = `<td colspan="10"><div class="detail-panel" id="detail-panel-${item.subreddit}">
+                detailTr.innerHTML = `<td colspan="12"><div class="detail-panel" id="detail-panel-${item.subreddit}">
                     <h3>r/${item.subreddit} — 30-Day Membership History</h3>
                     <div class="detail-chart-container"><canvas id="detail-chart-${item.subreddit}"></canvas></div>
                 </div></td>`;
@@ -665,6 +695,18 @@
                 fetchWatchlistTab();
             } catch (e) {
                 console.error('Deactivate failed:', e);
+            }
+        }
+
+        async function deactivateSubreddit(subreddit, btn) {
+            try {
+                await fetch(`/api/watchlist/${subreddit}/deactivate`, { method: 'POST' });
+                if (btn) btn.textContent = '✓';
+                // Refresh leaderboard after a moment
+                setTimeout(fetchLeaderboard, 500);
+            } catch (e) {
+                console.error('Deactivate failed:', e);
+                alert('Failed to deactivate ' + subreddit);
             }
         }
 

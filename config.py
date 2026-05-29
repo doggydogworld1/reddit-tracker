@@ -64,6 +64,12 @@ DISCOVERY_SEEDS = [
 ADMIN_SEED_TOKEN = "changeme123"   # Change before deploying — protects /admin/seed endpoint
 SCRAPE_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; stock-tracker/1.0; personal project)"}
 
+# Market cap filter for leaderboard display
+MARKET_CAP_FILTER = {
+    "min_billions": 0.5,    # exclude micro-caps below $500M (too illiquid)
+    "max_billions": 10.0,   # exclude large-caps above $10B
+}
+
 # Organic score: penalize velocity when stock already made a big price move
 ORGANIC_SCORE = {
     "threshold_1d":  8.0,    # 1-day price move % where penalty = 0.5
