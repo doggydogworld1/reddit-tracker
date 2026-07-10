@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Auditable long-term Reddit due-diligence track records">
+  <title>{% block title %}Signal Ledger{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  <script defer src="{{ url_for('static', path='/app.js') }}"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-mark">SL</span>
+      <span><strong>Signal Ledger</strong><small>Long-horizon DD intelligence</small></span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Overview</a>
+      <a href="/configuration" class="{% if page == 'configuration' %}active{% endif %}">Configuration</a>
+      <a href="/docs">API</a>
+    </nav>
+  </header>
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <span>Research tooling, not investment advice.</span>
+    <span>Returns are benchmark-relative and evidence-weighted.</span>
+  </footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

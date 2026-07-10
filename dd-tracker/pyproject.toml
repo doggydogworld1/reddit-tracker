@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reddit-dd-tracker"
+version = "0.1.0"
+description = "Auditable Reddit stock due-diligence track-record service"
+requires-python = ">=3.10"
+dependencies = [
+  "apscheduler>=3.10,<4",
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "jinja2>=3.1,<4",
+  "openai>=1.60,<2",
+  "praw>=7.8,<9",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.9,<1"]
+
+[project.scripts]
+dd-tracker = "dd_tracker.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dd_tracker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100

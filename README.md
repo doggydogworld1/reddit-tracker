@@ -1,5 +1,9 @@
 # Reddit Stock Community Velocity Tracker
 
+> This repository also contains the independent
+> [`dd-tracker`](dd-tracker/README.md) service for discovering and evaluating long-term Reddit
+> due-diligence authors. The original community-velocity tracker documented below is unchanged.
+
 Tracks membership growth velocity and acceleration across Reddit investment communities. The thesis: subreddits growing unusually fast are a leading indicator of retail investor interest in a stock.
 
 ## Setup

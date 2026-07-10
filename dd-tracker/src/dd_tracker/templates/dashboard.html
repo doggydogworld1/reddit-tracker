@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Overview · Signal Ledger{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Research command center</p>
+    <h1>Find the analysts who saw it early—and kept being right.</h1>
+    <p class="hero-copy">Timestamped theses, long-term outcomes, and honest confidence. Every score traces back to a public claim and a measurable benchmark.</p>
+  </div>
+  <div class="hero-actions">
+    <button class="button primary job-trigger" data-job="discover">Run discovery</button>
+    <button class="button secondary job-trigger" data-job="daily">Scan tracked authors</button>
+  </div>
+</section>
+
+{% if not configuration.reddit_configured or not configuration.market_data_configured %}
+<section class="setup-banner">
+  <div class="setup-icon">!</div>
+  <div>
+    <strong>Finish configuration to start collecting evidence</strong>
+    <p>Reddit OAuth and market-data credentials are required. AI extraction is optional.</p>
+  </div>
+  <a class="button compact" href="/configuration">Configure service</a>
+</section>
+{% endif %}
+
+<section class="metric-grid" aria-label="Summary metrics">
+  <article class="metric-card"><span>Authors observed</span><strong>{{ counts.authors }}</strong><small>Across configured communities</small></article>
+  <article class="metric-card"><span>Tracked analysts</span><strong>{{ counts.tracked }}</strong><small>Passed score + evidence gates</small></article>
+  <article class="metric-card"><span>Claims recorded</span><strong>{{ counts.claims }}</strong><small>Immutable thesis ledger</small></article>
+  <article class="metric-card accent"><span>Mature outcomes</span><strong>{{ counts.evaluated }}</strong><small>Evaluated against {{ configuration.benchmark_symbol }}</small></article>
+</section>
+
+<div class="content-grid wide-left">
+  <section class="panel">
+    <div class="panel-heading">
+      <div><p class="eyebrow">Leaderboard</p><h2>Evidence-weighted analysts</h2></div>
+      <span class="legend-dot">Confidence shown separately</span>
+    </div>
+    {% if leaders %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Author</th><th>Score</th><th>Evidence</th><th>Hit rate</th><th>Mature calls</th></tr></thead>
+        <tbody>
+        {% for author in leaders %}
+          <tr>
+            <td><a class="author-link" href="/ui/authors/{{ author.username }}">u/{{ author.username }}</a>{% if author.tracked %}<span class="pill tracked">Tracked</span>{% endif %}</td>
+            <td><strong class="score">{{ "%.1f"|format(author.reputation_score) }}</strong></td>
+            <td><div class="confidence"><span style="width: {{ author.evidence_confidence }}%"></span></div><small>{{ "%.0f"|format(author.evidence_confidence) }}%</small></td>
+            <td>{{ author.benchmark_hit_rate|percent }}</td>
+            <td>{{ author.mature_claims }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><span>∅</span><h3>No analyst evidence yet</h3><p>Configure credentials, then run discovery to populate the ledger.</p></div>
+    {% endif %}
+  </section>
+
+  <aside class="panel method-card">
+    <p class="eyebrow">Scoring method</p>
+    <h2>Luck gets discounted.</h2>
+    <p>Scores use a skeptical Bayesian prior, benchmark-relative returns, and a separate evidence meter. One spectacular call cannot manufacture a guru.</p>
+    <div class="formula"><span>80%</span> shrunk hit rate <b>+</b> <span>20%</span> excess return</div>
+    <a href="/docs" class="text-link">Inspect the API →</a>
+  </aside>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">Claim ledger</p><h2>Recent long-term theses</h2></div>
+    <button class="button ghost job-trigger" data-job="evaluate">Evaluate mature claims</button>
+  </div>
+  {% if recent_claims %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Company</th><th>Position</th><th>Author</th><th>Published</th><th>Horizon</th><th>Outcome</th></tr></thead>
+      <tbody>
+      {% for claim, post, author in recent_claims %}
+        <tr>
+          <td><strong class="ticker">{{ claim.symbol }}</strong><a class="post-title" href="{{ post.permalink }}" target="_blank" rel="noreferrer">{{ post.title }}</a></td>
+          <td><span class="pill {{ claim.direction }}">{{ claim.direction }}</span></td>
+          <td><a class="author-link" href="/ui/authors/{{ author.username }}">u/{{ author.username }}</a></td>
+          <td>{{ post.created_at|short_date }}</td>
+          <td>{{ claim.horizon_days }} days</td>
+          <td>{% if claim.evaluated_at %}<span class="outcome {% if claim.beat_benchmark %}win{% else %}loss{% endif %}">{{ claim.directional_excess_return|percent }}</span>{% else %}<span class="pill pending">Due {{ claim.evaluation_due_at|short_date }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state compact-empty"><p>No claims recorded yet.</p></div>
+  {% endif %}
+</section>
+
+<section class="panel job-panel">
+  <div class="panel-heading"><div><p class="eyebrow">Operations</p><h2>Recent jobs</h2></div><a href="/jobs" class="text-link">JSON history →</a></div>
+  <div class="job-list">
+  {% for job in recent_jobs %}
+    <div class="job-row"><span class="status-light {{ job.status }}"></span><strong>{{ job.job_name|replace('_', ' ')|title }}</strong><span>{{ job.started_at|short_date }}</span><span class="pill {{ job.status }}">{{ job.status }}</span></div>
+  {% else %}
+    <p class="muted">No jobs have run yet.</p>
+  {% endfor %}
+  </div>
+</section>
+{% endblock %}
