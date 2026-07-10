@@ -43,8 +43,8 @@ Prerequisites: Docker Desktop and a Reddit account. No Codex plugin or skill is 
 
 6. On the Mac mini, bootstrap binds port 8000 to its Tailscale IPv4 address. Open
    <http://macmini:8000/> for the dashboard or <http://macmini:8000/configuration> to finish
-   setup in the browser. The SSH tunnel `ssh -L 8000:127.0.0.1:8000 mm` remains available when
-   Tailscale is not connected.
+   setup in the browser. If a tunnel is ever needed, forward to the printed bind address—for
+   example `ssh -L 8000:100.86.240.74:8000 mm` on the current Mac mini.
 
 Useful commands:
 
