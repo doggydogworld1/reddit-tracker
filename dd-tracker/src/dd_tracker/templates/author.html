@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}u/{{ author.username }} · Signal Ledger{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to overview</a>
+<section class="author-hero">
+  <div class="avatar">{{ author.username[:2]|upper }}</div>
+  <div><p class="eyebrow">Analyst profile</p><h1>u/{{ author.username }}</h1><p>First observed {{ author.first_seen_at|short_date }} · {{ author.posts|length }} archived posts</p></div>
+  {% if author.tracked %}<span class="pill tracked large">Actively tracked</span>{% endif %}
+</section>
+<section class="metric-grid three">
+  <article class="metric-card accent"><span>Reputation score</span><strong>{{ "%.1f"|format(author.reputation_score) }}</strong><small>Benchmark-relative</small></article>
+  <article class="metric-card"><span>Evidence confidence</span><strong>{{ "%.0f"|format(author.evidence_confidence) }}%</strong><small>{{ author.mature_claims }} mature claims</small></article>
+  <article class="metric-card"><span>Benchmark hit rate</span><strong>{{ author.benchmark_hit_rate|percent }}</strong><small>Mean excess {{ author.mean_excess_return|percent }}</small></article>
+</section>
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">Audit trail</p><h2>Published theses</h2></div></div>
+  <div class="thesis-list">
+  {% for post in author.posts|sort(attribute='created_at', reverse=true) %}
+    <article class="thesis-card">
+      <div class="thesis-meta"><span>r/{{ post.subreddit }}</span><span>{{ post.created_at|short_date }}</span><span>{{ post.score }} Reddit score</span></div>
+      <h3><a href="{{ post.permalink }}" target="_blank" rel="noreferrer">{{ post.title }}</a></h3>
+      {% for claim in post.claims %}
+      <div class="claim-strip"><strong class="ticker">{{ claim.symbol }}</strong><span class="pill {{ claim.direction }}">{{ claim.direction }}</span><span>{{ claim.horizon_days }}-day horizon</span>{% if claim.evaluated_at %}<span class="outcome {% if claim.beat_benchmark %}win{% else %}loss{% endif %}">{{ claim.directional_excess_return|percent }} vs benchmark</span>{% else %}<span class="pill pending">Matures {{ claim.evaluation_due_at|short_date }}</span>{% endif %}</div>
+      {% else %}<p class="muted">No explicit actionable claim extracted.</p>{% endfor %}
+    </article>
+  {% else %}<div class="empty-state"><p>No posts archived for this author.</p></div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

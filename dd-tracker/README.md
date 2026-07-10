@@ -41,7 +41,9 @@ Prerequisites: Docker Desktop and a Reddit account. No Codex plugin or skill is 
    docker compose exec worker dd-tracker discover
    ```
 
-6. Open <http://localhost:8000/docs> and <http://localhost:8000/authors>.
+6. Create an SSH tunnel with `ssh -L 8000:127.0.0.1:8000 mm`, then open
+   <http://localhost:8000/> for the dashboard or <http://localhost:8000/configuration> to finish
+   setup in the browser.
 
 Useful commands:
 
@@ -60,6 +62,8 @@ bankruptcies.
 ## API
 
 - `GET /health` — credential/config readiness (never returns secrets)
+- `GET /` — frontend dashboard and operational controls
+- `GET /configuration` — persistent configuration UI with masked credentials
 - `GET /authors?tracked=true` — leaderboard and evidence strength
 - `GET /authors/{username}` — posts, extracted claims, and outcomes
 - `GET /claims?symbol=MSFT&evaluated=true` — claim ledger

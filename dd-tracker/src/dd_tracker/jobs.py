@@ -3,14 +3,14 @@ from __future__ import annotations
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from .config import get_settings
+from .configuration import load_settings
 from .database import SessionLocal, init_db
 from .runtime import build_service, record_job
 
 
 def run_discovery() -> dict:
-    settings = get_settings()
     with SessionLocal() as session:
+        settings = load_settings(session)
         service = build_service(session, settings)
 
         def action() -> dict:
@@ -23,8 +23,8 @@ def run_discovery() -> dict:
 
 
 def run_daily() -> dict:
-    settings = get_settings()
     with SessionLocal() as session:
+        settings = load_settings(session)
         service = build_service(session, settings)
 
         def action() -> dict:
@@ -37,15 +37,16 @@ def run_daily() -> dict:
 
 
 def run_evaluation() -> dict:
-    settings = get_settings()
     with SessionLocal() as session:
+        settings = load_settings(session)
         service = build_service(session, settings)
         return record_job(session, "evaluate_due", service.evaluate_due)
 
 
 def worker() -> None:
-    settings = get_settings()
     init_db()
+    with SessionLocal() as session:
+        settings = load_settings(session)
     scheduler = BlockingScheduler(timezone="UTC")
     scheduler.add_job(
         run_discovery,
@@ -69,4 +70,3 @@ def worker() -> None:
         misfire_grace_time=3600,
     )
     scheduler.start()
-

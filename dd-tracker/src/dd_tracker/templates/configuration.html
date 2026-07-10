@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Configuration · Signal Ledger{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">Service control</p><h1>Configuration</h1><p>Credentials are stored in the private PostgreSQL volume and are never returned to the browser.</p></div>
+  <div class="status-cluster">
+    <span class="service-status {% if configuration.reddit_configured %}ready{% endif %}"><i></i>Reddit</span>
+    <span class="service-status {% if configuration.market_data_configured %}ready{% endif %}"><i></i>Market data</span>
+    <span class="service-status {% if configuration.ai_configured %}ready{% endif %}"><i></i>AI parser</span>
+  </div>
+</section>
+
+<form id="configuration-form" class="config-layout">
+  <div class="config-main">
+    <section class="panel form-section">
+      <div class="section-number">01</div><div class="form-heading"><h2>Reddit access</h2><p>Authenticated read-only OAuth. HTML scraping is intentionally unsupported.</p></div>
+      <div class="field-grid">
+        <label><span>Client ID</span><input name="reddit_client_id" value="{{ configuration.reddit_client_id }}" autocomplete="off"></label>
+        <label><span>Client secret</span><input name="reddit_client_secret" type="password" placeholder="{% if configuration.reddit_secret_set %}Stored — leave blank to keep{% else %}Enter client secret{% endif %}" autocomplete="new-password"></label>
+        <label class="full"><span>User agent</span><input name="reddit_user_agent" value="{{ configuration.reddit_user_agent }}" placeholder="dd-track-record/0.1 by u/username"></label>
+        <label class="full"><span>Subreddits</span><textarea name="subreddits" rows="3" placeholder="ValueInvesting,stocks,investing">{{ configuration.subreddits }}</textarea><small>Comma-separated, without r/ prefixes.</small></label>
+      </div>
+    </section>
+
+    <section class="panel form-section">
+      <div class="section-number">02</div><div class="form-heading"><h2>Market evidence</h2><p>Adjusted price history determines outcomes; the model never judges its own predictions.</p></div>
+      <div class="field-grid">
+        <label><span>Alpha Vantage API key</span><input name="alpha_vantage_api_key" type="password" placeholder="{% if configuration.alpha_vantage_key_set %}Stored — leave blank to keep{% else %}Enter API key{% endif %}" autocomplete="new-password"></label>
+        <label><span>Benchmark symbol</span><input name="benchmark_symbol" value="{{ configuration.benchmark_symbol }}"></label>
+        <label><span>Default horizon (days)</span><input name="default_horizon_days" type="number" min="90" max="3650" value="{{ configuration.default_horizon_days }}"></label>
+        <label><span>Minimum post length</span><input name="min_post_chars" type="number" min="100" max="20000" value="{{ configuration.min_post_chars }}"></label>
+        <label class="full"><span>Known long-term winners to reverse-scout</span><textarea name="winner_symbols" rows="2" placeholder="NVDA,COST,MSFT">{{ configuration.winner_symbols }}</textarea><small>Discovery aid only. A winner-only list is not valid performance evidence.</small></label>
+      </div>
+    </section>
+
+    <section class="panel form-section">
+      <div class="section-number">03</div><div class="form-heading"><h2>Optional AI extraction</h2><p>AI identifies explicit claim structure. Returns and reputation remain deterministic.</p></div>
+      <div class="field-grid">
+        <label><span>OpenAI API key</span><input name="openai_api_key" type="password" placeholder="{% if configuration.openai_key_set %}Stored — leave blank to keep{% else %}Optional API key{% endif %}" autocomplete="new-password"></label>
+        <label><span>Model</span><input name="openai_model" value="{{ configuration.openai_model }}"></label>
+        <label class="toggle-row full"><input name="enable_ai_extraction" type="checkbox" {% if configuration.enable_ai_extraction %}checked{% endif %}><span class="toggle"></span><span><strong>Enable structured AI extraction</strong><small>Post text will be sent to the configured provider for inference.</small></span></label>
+      </div>
+    </section>
+
+    <section class="panel form-section">
+      <div class="section-number">04</div><div class="form-heading"><h2>Discovery and scoring</h2><p>Conservative defaults prevent a small number of lucky calls from dominating.</p></div>
+      <div class="field-grid three-fields">
+        <label><span>Discovery posts</span><input name="discovery_post_limit" type="number" min="10" max="1000" value="{{ configuration.discovery_post_limit }}"></label>
+        <label><span>Author history</span><input name="author_history_limit" type="number" min="10" max="1000" value="{{ configuration.author_history_limit }}"></label>
+        <label><span>Winner search</span><input name="winner_search_limit" type="number" min="10" max="1000" value="{{ configuration.winner_search_limit }}"></label>
+        <label><span>Tracking score</span><input name="track_score_threshold" type="number" min="0" max="100" step="0.1" value="{{ configuration.track_score_threshold }}"></label>
+        <label><span>Minimum mature calls</span><input name="track_min_mature_claims" type="number" min="1" max="1000" value="{{ configuration.track_min_mature_claims }}"></label>
+      </div>
+    </section>
+
+    <section class="panel form-section">
+      <div class="section-number">05</div><div class="form-heading"><h2>Schedule</h2><p>Times use UTC. Schedule changes take effect after restarting the service.</p></div>
+      <div class="field-grid three-fields">
+        <label><span>Discovery day</span><select name="weekly_discovery_day">{% for day in ['mon','tue','wed','thu','fri','sat','sun'] %}<option value="{{ day }}" {% if configuration.weekly_discovery_day == day %}selected{% endif %}>{{ day|title }}</option>{% endfor %}</select></label>
+        <label><span>Discovery hour UTC</span><input name="weekly_discovery_hour_utc" type="number" min="0" max="23" value="{{ configuration.weekly_discovery_hour_utc }}"></label>
+        <label><span>Daily monitor hour UTC</span><input name="daily_monitor_hour_utc" type="number" min="0" max="23" value="{{ configuration.daily_monitor_hour_utc }}"></label>
+      </div>
+    </section>
+  </div>
+
+  <aside class="config-sidebar">
+    <div class="panel sticky-card">
+      <p class="eyebrow">Apply changes</p><h2>Ready to save?</h2>
+      <p>Blank secret fields preserve the existing value. Other fields replace the current configuration.</p>
+      <button type="submit" class="button primary full-button">Save configuration</button>
+      <div id="save-result" class="save-result" aria-live="polite"></div>
+      <hr>
+      <p class="security-note"><strong>Security boundary</strong>Port 8000 is bound to localhost on the Mac mini. Reach this page through the SSH tunnel.</p>
+    </div>
+  </aside>
+</form>
+{% endblock %}

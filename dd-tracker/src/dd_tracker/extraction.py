@@ -36,6 +36,9 @@ class ClaimExtractor(Protocol):
 class RuleClaimExtractor:
     method = "rules"
 
+    def __init__(self, default_horizon_days: int = 365) -> None:
+        self.default_horizon_days = default_horizon_days
+
     def extract(self, submission: SubmissionData) -> list[ExtractedClaim]:
         text = f"{submission.title}\n{submission.body}"
         symbols = list(dict.fromkeys(CASHTAG.findall(text) + PAREN_TICKER.findall(text)))
@@ -51,7 +54,7 @@ class RuleClaimExtractor:
             ExtractedClaim(
                 symbol=symbol,
                 direction=direction,
-                horizon_days=365,
+                horizon_days=self.default_horizon_days,
                 thesis=submission.title[:500],
                 confidence=confidence,
             )
@@ -62,9 +65,10 @@ class RuleClaimExtractor:
 class OpenAIClaimExtractor:
     method = "openai"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, default_horizon_days: int = 365) -> None:
         self.client = OpenAI(api_key=api_key)
         self.model = model
+        self.default_horizon_days = default_horizon_days
 
     def extract(self, submission: SubmissionData) -> list[ExtractedClaim]:
         schema = ExtractedClaims.model_json_schema()
@@ -74,7 +78,8 @@ class OpenAIClaimExtractor:
                 "Extract only explicit, actionable public-equity investment claims. "
                 "Do not infer a position from a neutral mention. Use long or short. "
                 "This system evaluates long-term investing theses. Use the author's stated "
-                "horizon; otherwise use 365 days. Ignore day trades and short-term setups. "
+                f"horizon; otherwise use {self.default_horizon_days} days. "
+                "Ignore day trades and short-term setups. "
                 "Return an empty claims list when ambiguous. Never provide investment advice."
             ),
             input=(

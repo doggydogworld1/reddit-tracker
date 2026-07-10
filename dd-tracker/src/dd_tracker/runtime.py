@@ -29,9 +29,11 @@ def build_service(session: Session, settings: Settings) -> TrackerService:
         else None
     )
     extractor = (
-        OpenAIClaimExtractor(settings.openai_api_key, settings.openai_model)
+        OpenAIClaimExtractor(
+            settings.openai_api_key, settings.openai_model, settings.default_horizon_days
+        )
         if settings.ai_configured
-        else RuleClaimExtractor()
+        else RuleClaimExtractor(settings.default_horizon_days)
     )
     return TrackerService(session, settings, social, market, extractor)
 
@@ -54,4 +56,3 @@ def record_job(session: Session, name: str, action: Callable[[], dict]) -> dict:
     finally:
         run.finished_at = datetime.now(timezone.utc)
         session.commit()
-
