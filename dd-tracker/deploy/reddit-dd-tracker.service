@@ -8,9 +8,9 @@ Type=oneshot
 WorkingDirectory=%h/code/reddit-tracker/dd-tracker
 Environment=COMPOSE_PROJECT_NAME=reddit-dd-tracker
 RemainAfterExit=yes
-ExecStart=/usr/bin/docker-compose up -d --build
-ExecReload=/usr/bin/docker-compose up -d --build
-ExecStop=/usr/bin/docker-compose down
+ExecStart=/usr/bin/sg docker -c '/usr/bin/docker-compose up -d --build'
+ExecReload=/usr/bin/sg docker -c '/usr/bin/docker-compose up -d --build'
+ExecStop=/usr/bin/sg docker -c '/usr/bin/docker-compose down'
 TimeoutStartSec=0
 
 [Install]
