@@ -41,9 +41,10 @@ Prerequisites: Docker Desktop and a Reddit account. No Codex plugin or skill is 
    docker compose exec worker dd-tracker discover
    ```
 
-6. Create an SSH tunnel with `ssh -L 8000:127.0.0.1:8000 mm`, then open
-   <http://localhost:8000/> for the dashboard or <http://localhost:8000/configuration> to finish
-   setup in the browser.
+6. On the Mac mini, bootstrap binds port 8000 to its Tailscale IPv4 address. Open
+   <http://macmini:8000/> for the dashboard or <http://macmini:8000/configuration> to finish
+   setup in the browser. The SSH tunnel `ssh -L 8000:127.0.0.1:8000 mm` remains available when
+   Tailscale is not connected.
 
 Useful commands:
 

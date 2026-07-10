@@ -7,6 +7,7 @@ Wants=network-online.target docker.service
 Type=oneshot
 WorkingDirectory=%h/code/reddit-tracker/dd-tracker
 Environment=COMPOSE_PROJECT_NAME=reddit-dd-tracker
+EnvironmentFile=-%h/code/reddit-tracker/dd-tracker/.runtime.env
 RemainAfterExit=yes
 ExecStart=/usr/bin/sg docker -c '/usr/bin/docker-compose up -d --build'
 ExecReload=/usr/bin/sg docker -c '/usr/bin/docker-compose up -d --build'
